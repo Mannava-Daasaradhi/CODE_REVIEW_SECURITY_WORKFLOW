@@ -4,10 +4,10 @@
 # ============================================================
 
 project:
-  name: "project_name"
+  name: "CODE_REVIEW_SECURIY_WORKFLOW"
   version: "0.1.0"
   description: ""
-  domain: ""  # quantum | cyber | ai | data | hybrid
+  domain: "ai"  # quantum | cyber | ai | data | hybrid
 
 # === PATHS ===
 paths:

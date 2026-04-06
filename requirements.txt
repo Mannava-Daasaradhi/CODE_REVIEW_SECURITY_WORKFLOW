@@ -1,56 +1,26 @@
-# ============================================================
-# REQUIREMENTS.TXT — Base template
-# Claude will fill in exact versions (==) during Phase 2
-# Never use >= in production — pin exact versions
-# Uncomment sections relevant to your project domain
-# ============================================================
-
-# === CORE (always install) ===
-python-dotenv==1.0.1
-pydantic==2.7.1
-pyyaml==6.0.1
-loguru==0.7.2
-typer==0.12.3
-
-# === TESTING (always install) ===
-pytest==8.2.0
-pytest-cov==5.0.0
-mypy==1.10.0
-
-# === QUANTUM ===
-# pennylane==0.36.0
-# pennylane-lightning==0.36.0      # faster CPU simulator
-# qiskit==1.1.0
-# qiskit-aer==0.14.2               # CPU/GPU simulator
-# qiskit-ibm-runtime==0.23.0       # IBM Quantum access
-# scipy==1.13.0                    # classical optimizer
-# numpy==1.26.4
-
-# === CYBERSECURITY ===
-# cryptography==42.0.7             # PyCA — primary crypto library
-# liboqs-python==0.10.1            # post-quantum cryptography
-# scapy==2.5.0                     # network analysis
-# python-jose==3.3.0               # JWT
-# passlib==1.7.4                   # password hashing
-
-# === AI / ML ===
-# torch==2.3.0                     # CPU build by default
-# transformers==4.41.0
-# datasets==2.19.1
-# scikit-learn==1.5.0
-# langchain==0.2.1
-# langchain-community==0.2.1
-# mlflow==2.13.0
-# numpy==1.26.4
-
-# === DATA SCIENCE ===
-# polars==0.20.23                  # faster than pandas for large data
-# pandas==2.2.2                    # fallback / compatibility
-# dask==2024.5.0                   # out-of-memory data
-# dvc==3.51.1                      # data versioning
-# prefect==2.19.7                  # pipeline orchestration
-# matplotlib==3.9.0
-# seaborn==0.13.2
-# plotly==5.22.0
-# scipy==1.13.0
-# statsmodels==0.14.2
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.13.0
+certifi==2026.2.25
+click==8.3.2
+coverage==7.13.5
+fastapi==0.135.3
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.11
+iniconfig==2.3.0
+loguru==0.7.3
+packaging==26.0
+pluggy==1.6.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
+pydantic_core==2.41.5
+Pygments==2.20.0
+pytest==9.0.2
+pytest-cov==7.1.0
+python-dotenv==1.2.2
+starlette==1.0.0
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+uvicorn==0.44.0
