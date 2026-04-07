@@ -207,6 +207,10 @@ Agent -> GET /state
 1. **Episode data**: Who populates task1/2/3_episodes.json? Needs real code snippets with known bugs/vulns. Human task before Phase 5.
 2. **Episode count**: Architecture assumes ≥10 per task. Minimum viable is 3 (one per difficulty to demo graders).
 3. **Review quality rubric**: Resolved as keyword-based (Section 7). Flag before Phase 5 if team disagrees.
+4. **[Phase 4 Blocker] Lifespan handler**: main.py needs asynccontextmanager lifespan wiring EpisodeLoader + Environment into app.state.env.
+5. **[Phase 4 Blocker] Concurrency lock**: asyncio.Lock needed in Environment for reset() and step().
+6. **[Phase 4 Blocker] Episode clear after step**: set self._current_episode = None after step() completes.
+7. **[Phase 4 Should-Fix] difficulty=None cycling**: Replace rng.choice() with a deterministic cycling index.
 
 ---
 

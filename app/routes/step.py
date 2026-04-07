@@ -20,6 +20,6 @@ async def step(request: Request, action: Action) -> StepResult:
     """
     env = request.app.state.env
     try:
-        return env.step(action)
+        return await env.step(action)  # FIX: await — env.step() is now async
     except EnvironmentNotInitializedError as e:
         raise HTTPException(status_code=400, detail=str(e))

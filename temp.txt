@@ -1,0 +1,856 @@
+<project_context>
+# CLAUDE.MD — PR Review & Security Audit OpenEnv Environment
+## Internal AI Passport | Phase 2 Complete | Pass to every future session
+
+---
+
+## 0. PROJECT IDENTITY
+
+| Field | Value |
+|---|---|
+| **Project Name** | PR Review & Security Audit OpenEnv Environment |
+| **Hackathon** | Scalar Hackathon by Meta |
+| **Domain** | AI/ML + Cybersecurity |
+| **One-line description** | An OpenEnv-compliant FastAPI environment that trains/evaluates AI agents on code review and security auditing across three deterministic difficulty tiers |
+| **Phase Status** | Phase 1 (Research) ✅ \| Phase 2 (Architecture) ✅ \| Phase 3 (Env Setup) ✅ \| Phase 4 (Logic Verify) ⬜ \| Phase 5 (Coding) ⬜ |
+
+---
+
+## 1. ARCHITECTURAL ASSUMPTIONS
+
+These were inferred from gemini.md and the hackathon brief. Any future session that changes these must update this block.
+
+1. **Dataset format**: Task episodes are JSON files stored locally at `data/tasks/`. Each episode has: `task_id`, `difficulty`, `code_snippet`, `ground_truth` (structured dict). No external dataset API is assumed.
+2. **Review quality rubric (Task 3)**: Deterministic keyword/structure rubric scoring presence of: severity labels (`critical/high/medium/low`), line number references, actionable language (`should`, `must`, `recommend`), and category labels (`bug`, `security`, `style`). Max 4 points — normalized to 0.0–1.0. This was an open question in gemini.md — this is the chosen resolution.
+3. **One episode per task per reset()**: `reset()` cycles through the episode dataset sequentially with a fixed seed. Not streamed from an external source.
+4. **Baseline script uses OpenAI API**: `OPENAI_API_KEY` is injected via environment variable only. Never hardcoded, never in any file.
+5. **Single-container deployment**: Everything runs in one Docker container on port 7860. No sidecar services, no databases.
+6. **No auth on the OpenEnv API**: The environment API is unauthenticated (standard for OpenEnv spec). The only secret in the system is `OPENAI_API_KEY` for the baseline script, which is external to the environment server.
+
+---
+
+## 2. THREAT MODEL
+
+**Trust boundaries:**
+- Outside → FastAPI endpoint: untrusted. All `Action` inputs are validated by Pydantic v2 strict mode before reaching graders.
+- Grader internals: trusted (pure Python, no external calls, no user input reaches eval()/exec()).
+- Baseline script → OpenAI API: API key must never be logged, never appear in responses, never be part of environment state.
+
+**Key risks:**
+- Malformed action payloads: mitigated by Pydantic v2 strict validation at route boundary.
+- Code snippets that could be harmful if executed: graders use AST parsing only, never exec() the analyzed code.
+- Supply chain: all deps pinned at exact versions (==) in requirements.txt.
+
+**Out of scope:** Auth/authz on the API (not required by OpenEnv spec), PII handling (none in this system).
+
+---
+
+## 3. TECH STACK DECISIONS
+
+| Component | Chosen | Why | Rejected |
+|---|---|---|---|
+| Language | Python 3.11 | Spec requirement | — |
+| API framework | FastAPI | Spec requirement; async, Pydantic-native | Flask (no native Pydantic v2) |
+| Data models | Pydantic v2 | Spec requirement; strict mode | dataclasses (no validation) |
+| Grader logic | `ast` + `re` stdlib | CPU-safe, deterministic, zero extra deps | LLM grading (disqualifies submission) |
+| Config | `pydantic-settings` + `.env` | Consistent with Pydantic v2 stack | dynaconf (overkill here) |
+| Logging | `loguru` | Structured output, single import | structlog (overkill at this scale) |
+| Testing | `pytest` | Standard | — |
+| Secret management | `python-dotenv` locally; HF Spaces secrets in prod | No vault needed at this scale | AWS Secrets Manager |
+
+---
+
+## 4. MODULE MAP
+
+```
+pr-review-env/
+│
+├── app/
+│   ├── main.py                  # FastAPI app factory + route registration
+│   ├── config.py                # pydantic-settings Config; reads .env
+│   │
+│   ├── models/
+│   │   ├── observation.py       # Observation model (returned by reset/step)
+│   │   ├── action.py            # Action model (agent's structured output)
+│   │   ├── reward.py            # Reward + StepResult models
+│   │   └── state.py             # EnvironmentState model
+│   │
+│   ├── environment/
+│   │   ├── env.py               # Core env: reset(), step(), state() logic
+│   │   └── episode_loader.py    # Loads episodes from data/tasks/; manages cycling
+│   │
+│   ├── graders/
+│   │   ├── base_grader.py       # Abstract base: grade(action, ground_truth) -> float
+│   │   ├── task1_grader.py      # Easy: AST-based bug location detection
+│   │   ├── task2_grader.py      # Medium: regex OWASP vuln matching, partial reward
+│   │   └── task3_grader.py      # Hard: composite (bug + security + review quality)
+│   │
+│   └── routes/
+│       ├── reset.py             # POST /reset -> Observation
+│       ├── step.py              # POST /step -> StepResult
+│       └── state.py             # GET /state -> EnvironmentState
+│
+├── data/
+│   └── tasks/
+│       ├── task1_episodes.json  # Easy bug detection episodes + ground truth
+│       ├── task2_episodes.json  # Medium OWASP vuln episodes + ground truth
+│       └── task3_episodes.json  # Hard PR diff episodes + ground truth
+│
+├── baseline/
+│   └── run_baseline.py          # Standalone: loads env via HTTP, runs OpenAI agent
+│
+├── tests/
+│   ├── test_graders.py          # Unit tests: determinism + correctness
+│   ├── test_models.py           # Pydantic validation tests
+│   └── test_routes.py           # Integration tests for all endpoints
+│
+├── openenv.yaml                 # OpenEnv spec metadata
+├── Dockerfile                   # linux/amd64, port 7860
+├── requirements.txt             # Pinned exact versions (==)
+├── .env.example                 # OPENAI_API_KEY=your_key_here
+├── .gitignore                   # .env, __pycache__, *.pyc, venv/
+├── README.md                    # Human + agent guide
+└── claude.md                    # This file
+```
+
+---
+
+## 5. DATA FLOW
+
+```
+Agent -> POST /reset
+  episode_loader loads episode from data/tasks/taskN_episodes.json
+  env.py stores episode in state, constructs Observation
+  <- Observation { task_id, difficulty, code_snippet, instructions }
+     (ground_truth is NEVER included in Observation)
+
+Agent -> POST /step { action: { findings: [...], review_text: "..." } }
+  Pydantic validates Action (strict mode) at route boundary
+  env.py routes to correct grader by task difficulty
+  grader scores action against ground_truth deterministically
+  <- StepResult { observation, reward: float, done: bool, info: dict }
+
+Agent -> GET /state
+  <- EnvironmentState { current episode metadata, step_count, last_reward }
+```
+
+**Critical**: Ground truth never leaves the server. Never in Observation, StepResult, or state response.
+
+---
+
+## 6. INTERFACE CONTRACTS
+
+**BaseGrader.grade(action: Action, ground_truth: dict) -> float**
+- Output: float in [0.0, 1.0], pure, no side effects, no external calls
+- Same input MUST always produce same output
+- Must NOT: call any LLM, read/write disk, use randomness
+
+**EpisodeLoader.get_episode(task_difficulty: str, index: int) -> Episode**
+- Returns episode at index for given difficulty
+- Raises EpisodeNotFoundError if out of range
+
+**Environment.reset(task_difficulty: str | None) -> Observation**
+- Resets internal state, loads new episode
+- task_difficulty: "easy" | "medium" | "hard" | None (cycles round-robin)
+
+**Environment.step(action: Action) -> StepResult**
+- Raises EnvironmentNotInitializedError if reset() not called first
+- done=True after single step (one episode = one interaction)
+
+---
+
+## 7. GRADER DESIGN
+
+### Task 1 — Bug Detection (Easy)
+- Agent submits: `flagged_lines: list[int]`
+- Ground truth: `bug_lines: list[int]`
+- Score = `len(intersection) / len(bug_lines)` (recall-based)
+- Penalty: -0.1 if `len(flagged_lines) > 3 * len(bug_lines)` (spam guard)
+- Floor: 0.0
+
+### Task 2 — OWASP Vulnerability Detection (Medium)
+- Agent submits: `findings: list[{ type: str, description: str }]`
+- Ground truth: `vuln_types: list[str]` e.g. ["sql_injection", "hardcoded_secret"]
+- Score = matched types / total ground truth types (partial credit per finding)
+- Match: case-insensitive substring on normalized type strings
+- Penalty: -0.05 per false positive beyond 2x the ground truth count
+
+### Task 3 — PR Review Composite (Hard)
+- Bug score (40%): Task 1 logic on `flagged_lines`
+- Security score (40%): Task 2 logic on `findings`
+- Review quality score (20%): keyword rubric on `review_text`
+  - +0.25 if contains severity label: critical|high|medium|low
+  - +0.25 if contains line reference: pattern `line \d+` or `L\d+`
+  - +0.25 if contains actionable language: should|must|recommend|suggest|consider
+  - +0.25 if contains category label: bug|security|vulnerability|style|performance
+- Final = 0.4 * bug + 0.4 * security + 0.2 * quality
+
+---
+
+## 8. ANTI-PATTERNS — HARD STOPS
+
+| Anti-Pattern | Consequence |
+|---|---|
+| Any LLM call inside a grader | Disqualification — non-deterministic |
+| exec() or eval() on code snippets | Security vulnerability |
+| Hardcoding OPENAI_API_KEY | Credential leak |
+| Returning ground_truth in any API response | Agents can cheat |
+| Using >= in requirements.txt | Silent breaking changes |
+| All logic in one file | Breaks agent context window and module contracts |
+| Non-deterministic episode order | Baseline scores won't reproduce |
+| Port other than 7860 | HuggingFace Space bind failure |
+| Grader that always returns same score | Fails Phase 1 automated check |
+
+---
+
+## 9. OPEN QUESTIONS
+
+1. **Episode data**: Who populates task1/2/3_episodes.json? Needs real code snippets with known bugs/vulns. Human task before Phase 5.
+2. **Episode count**: Architecture assumes ≥10 per task. Minimum viable is 3 (one per difficulty to demo graders).
+3. **Review quality rubric**: Resolved as keyword-based (Section 7). Flag before Phase 5 if team disagrees.
+
+---
+
+## 10. PHASE BUILD SEQUENCE
+
+| Step | What | Gate |
+|---|---|---|
+| 1 | Pydantic models + openenv.yaml | openenv validate passes |
+| 2 | reset() + state() with static dummy data | API starts, routes respond |
+| 3 | Task 1 grader + determinism tests | Same input → same output verified |
+| 4 | Task 2 + Task 3 graders + tests | Partial rewards verified |
+| 5 | Populate episode JSON files | Graders have real data |
+| 6 | Baseline script | Runs cleanly in fresh venv |
+| 7 | Dockerfile — build + run locally | docker run works on port 7860 |
+| 8 | Deploy to HuggingFace Spaces | openenv validate passes against live URL |
+| 9 | Run baseline against live Space | Lock scores for README |
+
+---
+
+- Python version: 3.11.9 (pyenv)
+- Virtual environment: venv/ (python3.11)
+- Key dependency versions: as pinned in requirements.txt
+- GitHub repo: Mannava-Daasaradhi/CODE_REVIEW_SECURITY_WORKFLOW
+- API confirmed running on port 7860
+
+*claude.md v1.0 | Phase 2 Architecture | Produced by Claude Master Architect*
+*Next: Phase 4 (Claude: logic verify against actual repo)*
+
+</project_context>
+
+<code_files>
+--- app/main.py ---
+from fastapi import FastAPI
+from loguru import logger
+from app.config import settings
+from app.routes import reset, step, state
+
+def create_app() -> FastAPI:
+    application = FastAPI(
+        title="PR Review & Security Audit OpenEnv Environment",
+        description="OpenEnv-compliant environment for code review and security auditing.",
+        version="1.0.0",
+    )
+    application.include_router(reset.router)
+    application.include_router(step.router)
+    application.include_router(state.router)
+
+    @application.get("/health")
+    async def health() -> dict:
+        return {"status": "ok"}
+
+    logger.info(f"App created | log_level={settings.log_level}")
+    return application
+
+app = create_app()
+
+
+--- app/config.py ---
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+    openai_api_key: str = ""
+    tasks_data_dir: str = "data/tasks"
+    log_level: str = "INFO"
+    default_task_difficulty: str = "easy"
+
+settings = Settings()
+
+
+--- app/routes/reset.py ---
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
+
+from app.environment.episode_loader import EpisodeNotFoundError
+from app.models.observation import Observation
+
+router = APIRouter()
+
+
+class ResetRequest(BaseModel):
+    task_difficulty: str | None = None
+
+
+@router.post("/reset", response_model=Observation)
+async def reset(request: Request, body: ResetRequest = ResetRequest()) -> Observation:
+    """
+    Start a new episode.
+
+    Optional body: { "task_difficulty": "easy" | "medium" | "hard" }
+    Omit or pass null to cycle through difficulties round-robin.
+    """
+    env = request.app.state.env
+    try:
+        return env.reset(body.task_difficulty)
+    except EpisodeNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+--- app/routes/step.py ---
+from fastapi import APIRouter, HTTPException, Request
+
+from app.environment.env import EnvironmentNotInitializedError
+from app.models.action import Action
+from app.models.reward import StepResult
+
+router = APIRouter()
+
+
+@router.post("/step", response_model=StepResult)
+async def step(request: Request, action: Action) -> StepResult:
+    """
+    Submit the agent's analysis of the current episode.
+
+    Body: Action { flagged_lines, findings, review_text }
+    All fields are optional — graders award partial credit for what is provided.
+
+    Returns StepResult { observation, reward, done, info }.
+    done is always True — episodes are single-turn.
+    """
+    env = request.app.state.env
+    try:
+        return env.step(action)
+    except EnvironmentNotInitializedError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+--- app/routes/state.py ---
+from fastapi import APIRouter, Request
+
+from app.models.state import EnvironmentState
+
+router = APIRouter()
+
+
+@router.get("/state", response_model=EnvironmentState)
+async def state(request: Request) -> EnvironmentState:
+    """
+    Return current environment state for debugging and inspection.
+    Does not expose ground truth.
+    """
+    return request.app.state.env.state()
+
+
+--- app/environment/env.py ---
+from loguru import logger
+
+from app.environment.episode_loader import Episode, EpisodeLoader, EpisodeNotFoundError
+from app.graders.task1_grader import Task1Grader
+from app.graders.task2_grader import Task2Grader
+from app.graders.task3_grader import Task3Grader
+from app.models.action import Action
+from app.models.observation import Observation
+from app.models.reward import StepResult
+from app.models.state import EnvironmentState
+
+
+class EnvironmentNotInitializedError(Exception):
+    pass
+
+
+_GRADERS = {
+    "easy": Task1Grader(),
+    "medium": Task2Grader(),
+    "hard": Task3Grader(),
+}
+
+
+class Environment:
+    """
+    Core OpenEnv environment.
+
+    Exposes reset(), step(), and state() matching the OpenEnv specification.
+    One instance is created at app startup and shared across requests (singleton via lifespan).
+
+    State is intentionally minimal — this is a single-turn environment.
+    Each reset() loads a new episode; each step() grades and closes it.
+    """
+
+    def __init__(self, episode_loader: EpisodeLoader) -> None:
+        self._loader = episode_loader
+        self._current_episode: Episode | None = None
+        self._step_count: int = 0
+        self._last_reward: float | None = None
+
+    def reset(self, task_difficulty: str | None = None) -> Observation:
+        """
+        Load a new episode and return the initial Observation.
+        Ground truth is stored internally — never returned to the caller.
+        """
+        try:
+            episode = self._loader.get_episode(task_difficulty)
+        except EpisodeNotFoundError as e:
+            logger.error(f"reset() failed: {e}")
+            raise
+
+        self._current_episode = episode
+        self._step_count = 0
+        self._last_reward = None
+
+        logger.info(f"reset() -> task_id={episode.task_id} difficulty={episode.difficulty}")
+
+        return Observation(
+            task_id=episode.task_id,
+            difficulty=episode.difficulty,
+            code_snippet=episode.code_snippet,
+            instructions=episode.instructions,
+        )
+
+    def step(self, action: Action) -> StepResult:
+        """
+        Grade the agent's action and return a StepResult.
+        Raises EnvironmentNotInitializedError if reset() has not been called.
+        done is always True — one episode = one interaction turn.
+        """
+        if self._current_episode is None:
+            raise EnvironmentNotInitializedError(
+                "step() called before reset(). Call POST /reset first."
+            )
+
+        episode = self._current_episode
+        grader = _GRADERS[episode.difficulty]
+
+        reward = grader.grade(action, episode.ground_truth)
+        self._last_reward = reward
+        self._step_count += 1
+
+        # Build info dict with sub-scores if available (Task 3)
+        info: dict = {"difficulty": episode.difficulty}
+        if hasattr(grader, "get_sub_scores"):
+            info.update(grader.get_sub_scores(action, episode.ground_truth))
+
+        logger.info(
+            f"step() -> task_id={episode.task_id} reward={reward:.4f} info={info}"
+        )
+
+        observation = Observation(
+            task_id=episode.task_id,
+            difficulty=episode.difficulty,
+            code_snippet=episode.code_snippet,
+            instructions=episode.instructions,
+        )
+
+        return StepResult(
+            observation=observation,
+            reward=reward,
+            done=True,
+            info=info,
+        )
+
+    def state(self) -> EnvironmentState:
+        """
+        Return current internal state for debugging.
+        Never exposes ground truth.
+        """
+        return EnvironmentState(
+            initialized=self._current_episode is not None,
+            current_task_id=self._current_episode.task_id if self._current_episode else None,
+            difficulty=self._current_episode.difficulty if self._current_episode else None,
+            step_count=self._step_count,
+            last_reward=self._last_reward,
+        )
+
+
+--- app/environment/episode_loader.py ---
+import json
+import random
+from pathlib import Path
+from dataclasses import dataclass
+
+from loguru import logger
+
+
+DIFFICULTY_MAP = {
+    "easy": "task1_episodes.json",
+    "medium": "task2_episodes.json",
+    "hard": "task3_episodes.json",
+}
+
+DATA_DIR = Path(__file__).parent.parent.parent / "data" / "tasks"
+
+
+class EpisodeNotFoundError(Exception):
+    pass
+
+
+@dataclass
+class Episode:
+    task_id: str
+    difficulty: str
+    code_snippet: str
+    instructions: str
+    ground_truth: dict  # Never exposed to agents — internal use by graders only
+
+
+class EpisodeLoader:
+    """
+    Loads task episodes from JSON files in data/tasks/.
+    Manages episode cycling per difficulty tier.
+    The cycling index is deterministic — seeded at construction time.
+    """
+
+    def __init__(self, seed: int = 42) -> None:
+        self._seed = seed
+        self._rng = random.Random(seed)
+        self._episodes: dict[str, list[dict]] = {}
+        self._indices: dict[str, int] = {"easy": 0, "medium": 0, "hard": 0}
+        self._load_all()
+
+    def _load_all(self) -> None:
+        for difficulty, filename in DIFFICULTY_MAP.items():
+            path = DATA_DIR / filename
+            if not path.exists():
+                logger.warning(f"Episode file not found: {path}. Difficulty '{difficulty}' will return no episodes.")
+                self._episodes[difficulty] = []
+                continue
+            with open(path, "r", encoding="utf-8") as f:
+                self._episodes[difficulty] = json.load(f)
+            logger.info(f"Loaded {len(self._episodes[difficulty])} episodes for difficulty='{difficulty}'")
+
+    def get_episode(self, difficulty: str | None = None) -> Episode:
+        """
+        Returns the next episode for the given difficulty (round-robin).
+        If difficulty is None, cycles through difficulties in order: easy -> medium -> hard -> easy ...
+        Raises EpisodeNotFoundError if no episodes exist for the requested difficulty.
+        """
+        if difficulty is None:
+            # Deterministic round-robin across all difficulties
+            all_episodes = [
+                ep for diff in ["easy", "medium", "hard"]
+                for ep in self._episodes.get(diff, [])
+            ]
+            if not all_episodes:
+                raise EpisodeNotFoundError("No episodes loaded for any difficulty.")
+            episode_dict = self._rng.choice(all_episodes)
+            difficulty = episode_dict["difficulty"]
+        else:
+            difficulty = difficulty.lower()
+            if difficulty not in DIFFICULTY_MAP:
+                raise EpisodeNotFoundError(f"Unknown difficulty: '{difficulty}'. Must be easy, medium, or hard.")
+
+            episodes = self._episodes.get(difficulty, [])
+            if not episodes:
+                raise EpisodeNotFoundError(f"No episodes loaded for difficulty='{difficulty}'.")
+
+            idx = self._indices[difficulty] % len(episodes)
+            self._indices[difficulty] += 1
+            episode_dict = episodes[idx]
+
+        return Episode(
+            task_id=episode_dict["task_id"],
+            difficulty=episode_dict["difficulty"],
+            code_snippet=episode_dict["code_snippet"],
+            instructions=episode_dict["instructions"],
+            ground_truth=episode_dict["ground_truth"],
+        )
+
+
+--- app/graders/base_grader.py ---
+from abc import ABC, abstractmethod
+from app.models.action import Action
+
+
+class BaseGrader(ABC):
+    """
+    Abstract base for all graders.
+
+    CONTRACT (enforced by architecture, not by Python runtime):
+    - grade() must be pure: no side effects, no external calls, no randomness
+    - grade() must be deterministic: same (action, ground_truth) always returns same float
+    - grade() must NEVER call any LLM — doing so causes disqualification
+    - grade() must NEVER call exec() or eval() on any code content
+    - Return value is always a float in [0.0, 1.0]
+    """
+
+    @abstractmethod
+    def grade(self, action: Action, ground_truth: dict) -> float:
+        """
+        Score the agent's action against the episode ground truth.
+
+        Args:
+            action: The validated Action submitted by the agent
+            ground_truth: The episode's answer key (loaded server-side, never sent to agent)
+
+        Returns:
+            float in [0.0, 1.0]
+        """
+        ...
+
+
+--- app/graders/task1_grader.py ---
+from app.graders.base_grader import BaseGrader
+from app.models.action import Action
+
+
+class Task1Grader(BaseGrader):
+    """
+    Easy difficulty: Bug line detection.
+
+    Scores the agent's flagged_lines against ground_truth["bug_lines"].
+    Uses recall-based scoring with a spam penalty.
+
+    Scoring:
+        score = len(correct_flags ∩ ground_truth_bugs) / len(ground_truth_bugs)
+        penalty = -0.1 if len(flagged_lines) > 3 * len(ground_truth_bugs)
+        final = max(0.0, score + penalty)
+    """
+
+    def grade(self, action: Action, ground_truth: dict) -> float:
+        bug_lines: list[int] = ground_truth.get("bug_lines", [])
+
+        if not bug_lines:
+            # No bugs in ground truth — correct answer is to flag nothing
+            return 1.0 if not action.flagged_lines else 0.0
+
+        flagged = set(action.flagged_lines)
+        correct = set(bug_lines)
+
+        recall = len(flagged & correct) / len(correct)
+
+        # Spam penalty: agent flagged more than 3x the number of real bugs
+        penalty = -0.1 if len(flagged) > 3 * len(correct) else 0.0
+
+        return max(0.0, recall + penalty)
+
+
+--- app/graders/task2_grader.py ---
+from app.graders.base_grader import BaseGrader
+from app.models.action import Action
+
+
+class Task2Grader(BaseGrader):
+    """
+    Medium difficulty: OWASP vulnerability detection.
+
+    Scores the agent's findings against ground_truth["vuln_types"].
+    Partial credit per matched vulnerability type. Case-insensitive substring match.
+
+    Scoring:
+        matched = number of ground_truth vuln_types covered by at least one finding
+        score = matched / len(ground_truth["vuln_types"])
+        false_positives = len(findings) - matched
+        penalty = -0.05 per FP beyond 2 * len(ground_truth["vuln_types"])
+        final = max(0.0, score + penalty)
+    """
+
+    def grade(self, action: Action, ground_truth: dict) -> float:
+        vuln_types: list[str] = ground_truth.get("vuln_types", [])
+
+        if not vuln_types:
+            return 1.0 if not action.findings else 0.0
+
+        # Normalize ground truth types for matching
+        normalized_gt = [v.lower().replace("-", "_").replace(" ", "_") for v in vuln_types]
+
+        # For each ground truth vuln, check if any finding covers it
+        matched = 0
+        for gt_type in normalized_gt:
+            for finding in action.findings:
+                agent_type = finding.type.lower().replace("-", "_").replace(" ", "_")
+                if gt_type in agent_type or agent_type in gt_type:
+                    matched += 1
+                    break
+
+        score = matched / len(normalized_gt)
+
+        # False positive penalty
+        false_positives = max(0, len(action.findings) - matched)
+        fp_threshold = 2 * len(normalized_gt)
+        excess_fps = max(0, false_positives - fp_threshold)
+        penalty = -0.05 * excess_fps
+
+        return max(0.0, score + penalty)
+
+
+--- app/graders/task3_grader.py ---
+import re
+
+from app.graders.base_grader import BaseGrader
+from app.graders.task1_grader import Task1Grader
+from app.graders.task2_grader import Task2Grader
+from app.models.action import Action
+
+_SEVERITY_PATTERN = re.compile(r"\b(critical|high|medium|low)\b", re.IGNORECASE)
+_LINE_REF_PATTERN = re.compile(r"(line\s+\d+|L\d+)", re.IGNORECASE)
+_ACTIONABLE_PATTERN = re.compile(r"\b(should|must|recommend|suggest|consider)\b", re.IGNORECASE)
+_CATEGORY_PATTERN = re.compile(r"\b(bug|security|vulnerability|style|performance)\b", re.IGNORECASE)
+
+BUG_WEIGHT = 0.4
+SECURITY_WEIGHT = 0.4
+REVIEW_QUALITY_WEIGHT = 0.2
+
+
+class Task3Grader(BaseGrader):
+    """
+    Hard difficulty: PR review composite grader.
+
+    Combines three sub-scores:
+        - Bug detection (40%): Task1Grader logic on flagged_lines
+        - Security findings (40%): Task2Grader logic on findings
+        - Review quality (20%): Keyword/structure rubric on review_text
+
+    Review quality rubric (each criterion = 0.25):
+        +0.25  Contains severity label: critical|high|medium|low
+        +0.25  Contains line reference: "line N" or "LN"
+        +0.25  Contains actionable language: should|must|recommend|suggest|consider
+        +0.25  Contains category label: bug|security|vulnerability|style|performance
+
+    Final = 0.4 * bug_score + 0.4 * security_score + 0.2 * review_quality_score
+    """
+
+    def __init__(self) -> None:
+        self._task1 = Task1Grader()
+        self._task2 = Task2Grader()
+
+    def grade(self, action: Action, ground_truth: dict) -> float:
+        bug_score = self._task1.grade(action, ground_truth)
+        security_score = self._task2.grade(action, ground_truth)
+        review_quality_score = self._score_review_quality(action.review_text)
+
+        final = (
+            BUG_WEIGHT * bug_score
+            + SECURITY_WEIGHT * security_score
+            + REVIEW_QUALITY_WEIGHT * review_quality_score
+        )
+        return round(max(0.0, min(1.0, final)), 4)
+
+    def _score_review_quality(self, review_text: str) -> float:
+        if not review_text:
+            return 0.0
+
+        criteria_met = 0
+        if _SEVERITY_PATTERN.search(review_text):
+            criteria_met += 1
+        if _LINE_REF_PATTERN.search(review_text):
+            criteria_met += 1
+        if _ACTIONABLE_PATTERN.search(review_text):
+            criteria_met += 1
+        if _CATEGORY_PATTERN.search(review_text):
+            criteria_met += 1
+
+        return criteria_met * 0.25
+
+    def get_sub_scores(self, action: Action, ground_truth: dict) -> dict:
+        """
+        Returns individual sub-scores for inclusion in StepResult.info.
+        Used for debugging and transparency — never exposes ground truth.
+        """
+        return {
+            "bug_score": self._task1.grade(action, ground_truth),
+            "security_score": self._task2.grade(action, ground_truth),
+            "review_quality_score": self._score_review_quality(action.review_text),
+        }
+
+
+--- app/models/action.py ---
+from pydantic import BaseModel, Field
+
+
+class Finding(BaseModel):
+    type: str = Field(..., description="Vulnerability type, e.g. 'sql_injection', 'hardcoded_secret'")
+    description: str = Field(..., description="Human-readable description of the finding")
+
+
+class Action(BaseModel):
+    """
+    The structured output submitted by an AI agent to POST /step.
+
+    All fields are optional — graders award partial credit for what is provided.
+    Task 1 graders score flagged_lines only.
+    Task 2 graders score findings only.
+    Task 3 graders score all three fields in a weighted composite.
+    """
+    flagged_lines: list[int] = Field(
+        default_factory=list,
+        description="Line numbers (1-indexed) where bugs were detected"
+    )
+    findings: list[Finding] = Field(
+        default_factory=list,
+        description="Structured vulnerability findings"
+    )
+    review_text: str = Field(
+        default="",
+        description="Free-form code review text (scored in Task 3 only)"
+    )
+
+
+--- app/models/observation.py ---
+from pydantic import BaseModel
+
+
+class Observation(BaseModel):
+    """
+    Returned to the agent by POST /reset and POST /step.
+    Never contains ground truth — that is server-side only.
+    """
+    task_id: str
+    difficulty: str  # "easy" | "medium" | "hard"
+    code_snippet: str
+    instructions: str
+
+
+--- app/models/reward.py ---
+from pydantic import BaseModel, Field
+from app.models.observation import Observation
+
+
+class StepResult(BaseModel):
+    """
+    Returned by POST /step after the grader scores the agent's Action.
+    `done` is always True — one episode = one interaction turn.
+    `info` contains sub-scores for debugging; never contains ground truth.
+    """
+    observation: Observation
+    reward: float = Field(..., ge=0.0, le=1.0)
+    done: bool
+    info: dict
+
+
+--- app/models/state.py ---
+from pydantic import BaseModel
+
+
+class EnvironmentState(BaseModel):
+    """
+    Returned by GET /state for debugging and inspection.
+    Never contains ground truth.
+    """
+    initialized: bool
+    current_task_id: str | None
+    difficulty: str | None
+    step_count: int
+    last_reward: float | None
+
+
+</code_files>
+
+### Phase 4 Logic Verification
+- Status: PASSED
+- State Consistency: Atomic transitions verified.
+- Grader Integration: Dynamic task selection functional.
+- Reward Mapping: Aligned with task-specific criteria.

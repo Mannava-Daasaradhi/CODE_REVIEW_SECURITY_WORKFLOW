@@ -21,6 +21,6 @@ async def reset(request: Request, body: ResetRequest = ResetRequest()) -> Observ
     """
     env = request.app.state.env
     try:
-        return env.reset(body.task_difficulty)
+        return await env.reset(body.task_difficulty)  # FIX: await — env.reset() is now async
     except EpisodeNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

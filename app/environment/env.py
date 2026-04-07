@@ -1,3 +1,5 @@
+import asyncio
+
 from loguru import logger
 
 from app.environment.episode_loader import Episode, EpisodeLoader, EpisodeNotFoundError
@@ -28,8 +30,11 @@ class Environment:
     Exposes reset(), step(), and state() matching the OpenEnv specification.
     One instance is created at app startup and shared across requests (singleton via lifespan).
 
+    Thread/async safety: an asyncio.Lock guards all state mutations so that
+    concurrent reset() and step() calls cannot interleave and corrupt state.
+
     State is intentionally minimal — this is a single-turn environment.
-    Each reset() loads a new episode; each step() grades and closes it.
+    Each reset() loads a new episode; each step() grades, clears the episode, and closes it.
     """
 
     def __init__(self, episode_loader: EpisodeLoader) -> None:
@@ -37,76 +42,84 @@ class Environment:
         self._current_episode: Episode | None = None
         self._step_count: int = 0
         self._last_reward: float | None = None
+        self._lock = asyncio.Lock()  # FIX: guards concurrent reset()/step() in async context
 
-    def reset(self, task_difficulty: str | None = None) -> Observation:
+    async def reset(self, task_difficulty: str | None = None) -> Observation:
         """
         Load a new episode and return the initial Observation.
         Ground truth is stored internally — never returned to the caller.
         """
-        try:
-            episode = self._loader.get_episode(task_difficulty)
-        except EpisodeNotFoundError as e:
-            logger.error(f"reset() failed: {e}")
-            raise
+        async with self._lock:
+            try:
+                episode = self._loader.get_episode(task_difficulty)
+            except EpisodeNotFoundError as e:
+                logger.error(f"reset() failed: {e}")
+                raise
 
-        self._current_episode = episode
-        self._step_count = 0
-        self._last_reward = None
+            self._current_episode = episode
+            self._step_count = 0
+            self._last_reward = None
 
-        logger.info(f"reset() -> task_id={episode.task_id} difficulty={episode.difficulty}")
+            logger.info(f"reset() -> task_id={episode.task_id} difficulty={episode.difficulty}")
 
-        return Observation(
-            task_id=episode.task_id,
-            difficulty=episode.difficulty,
-            code_snippet=episode.code_snippet,
-            instructions=episode.instructions,
-        )
+            return Observation(
+                task_id=episode.task_id,
+                difficulty=episode.difficulty,
+                code_snippet=episode.code_snippet,
+                instructions=episode.instructions,
+            )
 
-    def step(self, action: Action) -> StepResult:
+    async def step(self, action: Action) -> StepResult:
         """
         Grade the agent's action and return a StepResult.
         Raises EnvironmentNotInitializedError if reset() has not been called.
+        Clears the current episode after grading — enforces single-turn semantics.
         done is always True — one episode = one interaction turn.
         """
-        if self._current_episode is None:
-            raise EnvironmentNotInitializedError(
-                "step() called before reset(). Call POST /reset first."
+        async with self._lock:
+            if self._current_episode is None:
+                raise EnvironmentNotInitializedError(
+                    "step() called before reset(). Call POST /reset first."
+                )
+
+            episode = self._current_episode
+            grader = _GRADERS[episode.difficulty]
+
+            reward = grader.grade(action, episode.ground_truth)
+            self._last_reward = reward
+            self._step_count += 1
+
+            # Build info dict with sub-scores if available (Task 3)
+            info: dict = {"difficulty": episode.difficulty}
+            if hasattr(grader, "get_sub_scores"):
+                info.update(grader.get_sub_scores(action, episode.ground_truth))
+
+            logger.info(
+                f"step() -> task_id={episode.task_id} reward={reward:.4f} info={info}"
             )
 
-        episode = self._current_episode
-        grader = _GRADERS[episode.difficulty]
+            observation = Observation(
+                task_id=episode.task_id,
+                difficulty=episode.difficulty,
+                code_snippet=episode.code_snippet,
+                instructions=episode.instructions,
+            )
 
-        reward = grader.grade(action, episode.ground_truth)
-        self._last_reward = reward
-        self._step_count += 1
+            # FIX: clear episode after step — enforces single-turn, prevents reward spamming
+            self._current_episode = None
 
-        # Build info dict with sub-scores if available (Task 3)
-        info: dict = {"difficulty": episode.difficulty}
-        if hasattr(grader, "get_sub_scores"):
-            info.update(grader.get_sub_scores(action, episode.ground_truth))
-
-        logger.info(
-            f"step() -> task_id={episode.task_id} reward={reward:.4f} info={info}"
-        )
-
-        observation = Observation(
-            task_id=episode.task_id,
-            difficulty=episode.difficulty,
-            code_snippet=episode.code_snippet,
-            instructions=episode.instructions,
-        )
-
-        return StepResult(
-            observation=observation,
-            reward=reward,
-            done=True,
-            info=info,
-        )
+            return StepResult(
+                observation=observation,
+                reward=reward,
+                done=True,
+                info=info,
+            )
 
     def state(self) -> EnvironmentState:
         """
         Return current internal state for debugging.
         Never exposes ground truth.
+        Note: intentionally not locked — read-only snapshot, acceptable eventual consistency.
         """
         return EnvironmentState(
             initialized=self._current_episode is not None,
