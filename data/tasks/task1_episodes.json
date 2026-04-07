@@ -1,0 +1,29 @@
+[
+  {
+    "task_id": "task1_ep_001",
+    "difficulty": "easy",
+    "code_snippet": "def divide(a, b):\n    return a / b\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [2]
+    }
+  },
+  {
+    "task_id": "task1_ep_002",
+    "difficulty": "easy",
+    "code_snippet": "def get_last(items):\n    return items[len(items)]\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [2]
+    }
+  },
+  {
+    "task_id": "task1_ep_003",
+    "difficulty": "easy",
+    "code_snippet": "def find_user(users, name):\n    for i in range(1, len(users)):\n        if users[i].name == name:\n            return users[i]\n    return None\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [2]
+    }
+  }
+]

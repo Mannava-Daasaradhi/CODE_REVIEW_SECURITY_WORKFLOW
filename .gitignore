@@ -1,66 +1,12 @@
-# Environment
 .env
-.env.local
+__pycache__/
+*.pyc
+*.pyo
 venv/
 .venv/
-env/
-
-# Python
-__pycache__/
-*.py[cod]
 *.egg-info/
 dist/
 build/
-*.so
-
-# Data (use DVC instead)
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-
-# ML artifacts
-checkpoints/
-*.ckpt
-*.pt
-*.pth
-*.pkl
-mlruns/
-wandb/
-
-# Quantum
-*.qasm
-ibm_quantum_credentials.json
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Testing
 .pytest_cache/
-.coverage
-htmlcov/
 .mypy_cache/
-.ruff_cache/
-
-# IDE
-.vscode/settings.json
-.idea/
-*.swp
-.DS_Store
-
-# Logs (keep structure, not content)
-logs/*.log
-logs/*.json
-logs/*.jsonl
-logs/*.txt
-!logs/.gitkeep
-
-# Secrets
-*.pem
-*.key
-secrets/
-
-# === PROJECT SPECIFIC ===
-pr_review_results/
-scan_reports/
-*.sarif
+baseline/results.json

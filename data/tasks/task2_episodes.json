@@ -1,0 +1,29 @@
+[
+  {
+    "task_id": "task2_ep_001",
+    "difficulty": "medium",
+    "code_snippet": "def login(username, password):\n    query = f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n    result = db.execute(query)\n    return result.fetchone()\n",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "ground_truth": {
+      "vuln_types": ["sql_injection"]
+    }
+  },
+  {
+    "task_id": "task2_ep_002",
+    "difficulty": "medium",
+    "code_snippet": "import os\n\nAPI_KEY = 'sk-prod-abc123hardcoded'\n\ndef get_data(user_input):\n    query = f'SELECT * FROM records WHERE id={user_input}'\n    return db.execute(query).fetchall()\n",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "ground_truth": {
+      "vuln_types": ["hardcoded_secret", "sql_injection"]
+    }
+  },
+  {
+    "task_id": "task2_ep_003",
+    "difficulty": "medium",
+    "code_snippet": "from flask import request, render_template_string\n\ndef search():\n    query = request.args.get('q', '')\n    return render_template_string(f'<h1>Results for: {query}</h1>')\n",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "ground_truth": {
+      "vuln_types": ["xss"]
+    }
+  }
+]

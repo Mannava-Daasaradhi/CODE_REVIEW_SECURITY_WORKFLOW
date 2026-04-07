@@ -1,0 +1,32 @@
+[
+  {
+    "task_id": "task3_ep_001",
+    "difficulty": "hard",
+    "code_snippet": "--- a/auth.py\n+++ b/auth.py\n@@ -10,6 +10,10 @@\n+def authenticate(username, password):\n+    token = request.args.get('token')\n+    query = f\"SELECT * FROM sessions WHERE token='{token}'\"\n+    return db.execute(query).fetchone()\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [],
+      "vuln_types": ["sql_injection"]
+    }
+  },
+  {
+    "task_id": "task3_ep_002",
+    "difficulty": "hard",
+    "code_snippet": "--- a/utils.py\n+++ b/utils.py\n@@ -5,4 +5,8 @@\n+def process(items):\n+    SECRET = 'hardcoded-db-password'\n+    for i in range(1, len(items)):\n+        print(items[i])\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [3],
+      "vuln_types": ["hardcoded_secret"]
+    }
+  },
+  {
+    "task_id": "task3_ep_003",
+    "difficulty": "hard",
+    "code_snippet": "--- a/views.py\n+++ b/views.py\n@@ -1,3 +1,7 @@\n+from flask import request, render_template_string\n+def display_comment():\n+    comment = request.form.get('comment')\n+    return render_template_string('<p>' + comment + '</p>')\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [],
+      "vuln_types": ["xss"]
+    }
+  }
+]
