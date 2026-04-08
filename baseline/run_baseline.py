@@ -21,7 +21,8 @@ import time
 from pathlib import Path
 
 import httpx
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from google.api_core.exceptions import ResourceExhausted
 
 DIFFICULTIES = ["easy", "medium", "hard"]
@@ -52,21 +53,25 @@ Respond with JSON only. No markdown, no explanation, no code fences."""
 
 
 def build_user_prompt(observation: dict) -> str:
-    # Add explicit line numbers to the code snippet so the model can reference them accurately
+    """Prepend line numbers to code so the model can reference them accurately."""
     code_lines = observation["code_snippet"].splitlines()
-    numbered = "\n".join(f"{i+1}: {line}" for i, line in enumerate(code_lines))
+    numbered = "\n".join(f"{i + 1}: {line}" for i, line in enumerate(code_lines))
     return (
         f"Task: {observation['instructions']}\n\n"
         f"Code (line numbers shown for reference):\n{numbered}"
     )
 
 
-def call_agent(model: genai.GenerativeModel, observation: dict, max_retries: int = 5) -> dict:
+def call_agent(client: genai.Client, model_name: str, observation: dict, max_retries: int = 5) -> dict:
     full_prompt = SYSTEM_PROMPT + "\n\n" + build_user_prompt(observation)
 
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(full_prompt)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(temperature=0),
+            )
             raw = response.text.strip()
 
             # Strip markdown code fences if model adds them anyway
@@ -99,7 +104,6 @@ def call_agent(model: genai.GenerativeModel, observation: dict, max_retries: int
             if attempt == max_retries - 1:
                 raise
 
-    # Should not be reached, but satisfy type checker
     return {"flagged_lines": [], "findings": [], "review_text": ""}
 
 
@@ -109,19 +113,12 @@ def run_baseline(env_url: str, model_name: str) -> None:
         print("ERROR: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
         sys.exit(1)
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_name=model_name,
-        generation_config=genai.types.GenerationConfig(
-            temperature=0,  # Deterministic output
-        ),
-    )
+    client = genai.Client(api_key=api_key)
     print(f"Model: {model_name}")
 
     results = []
 
     with httpx.Client(base_url=env_url, timeout=30.0) as http:
-        # Health check
         health = http.get("/")
         if health.status_code != 200:
             print(f"ERROR: Environment at {env_url} is not responding.", file=sys.stderr)
@@ -131,20 +128,17 @@ def run_baseline(env_url: str, model_name: str) -> None:
         for i, difficulty in enumerate(DIFFICULTIES):
             print(f"Running difficulty: {difficulty}")
 
-            # Reset
             reset_resp = http.post("/reset", json={"task_difficulty": difficulty})
             reset_resp.raise_for_status()
             observation = reset_resp.json()
             print(f"  Episode: {observation['task_id']}")
 
-            # Agent inference
             try:
-                action = call_agent(model, observation)
+                action = call_agent(client, model_name, observation)
             except Exception as e:
                 print(f"  ERROR: Agent call failed: {e}", file=sys.stderr)
                 action = {"flagged_lines": [], "findings": [], "review_text": ""}
 
-            # Step
             step_resp = http.post("/step", json=action)
             step_resp.raise_for_status()
             result = step_resp.json()
@@ -161,14 +155,12 @@ def run_baseline(env_url: str, model_name: str) -> None:
                 "action": action,
             })
 
-            # Rate limit guard between runs (skip after last one)
             if i < len(DIFFICULTIES) - 1:
                 print("  [Rate limit guard] Waiting 15s before next run...")
                 time.sleep(15)
 
         print()
 
-    # Write results
     RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(RESULTS_PATH, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
