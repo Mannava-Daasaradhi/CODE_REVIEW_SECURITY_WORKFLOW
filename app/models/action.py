@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Finding(BaseModel):
-    model_config = ConfigDict(strict=True)  # strict mode at route boundary
+    model_config = ConfigDict(strict=True)
 
     type: str = Field(..., description="Vulnerability type, e.g. 'sql_injection', 'hardcoded_secret'")
     description: str = Field(..., description="Human-readable description of the finding")
@@ -17,11 +17,11 @@ class Action(BaseModel):
     Task 2 graders score findings only.
     Task 3 graders score all three fields in a weighted composite.
     """
-    model_config = ConfigDict(strict=True)  # strict mode — rejects unexpected field types
+    model_config = ConfigDict(strict=True)
 
     flagged_lines: list[int] = Field(
         default_factory=list,
-        description="Line numbers (1-indexed, ge=1) where bugs were detected",
+        description="Line numbers (1-indexed) where bugs were detected",
     )
     findings: list[Finding] = Field(
         default_factory=list,
@@ -37,5 +37,7 @@ class Action(BaseModel):
     def lines_must_be_positive(cls, v: list[int]) -> list[int]:
         invalid = [n for n in v if n < 1]
         if invalid:
-            raise ValueError(f"flagged_lines must be 1-indexed (≥1). Invalid values: {invalid}")
+            raise ValueError(
+                f"flagged_lines must be 1-indexed (≥1). Invalid values: {invalid}"
+            )
         return v

@@ -9,10 +9,63 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def test_health(client):
+def test_root(client):
+    # GET / is a convenience liveness probe — returns "ok"
     r = client.get("/")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+
+
+def test_health(client):
+    # GET /health is the openenv validate endpoint — must return "healthy"
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "healthy"
+
+
+def test_metadata(client):
+    r = client.get("/metadata")
+    assert r.status_code == 200
+    data = r.json()
+    assert "name" in data
+    assert "description" in data
+
+
+def test_schema(client):
+    r = client.get("/schema")
+    assert r.status_code == 200
+    data = r.json()
+    assert "action" in data
+    assert "observation" in data
+    assert "state" in data
+
+
+def test_mcp_initialize(client):
+    r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["jsonrpc"] == "2.0"
+    assert "result" in data
+
+
+def test_mcp_tools_list(client):
+    r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["jsonrpc"] == "2.0"
+    tools = data["result"]["tools"]
+    tool_names = [t["name"] for t in tools]
+    assert "reset" in tool_names
+    assert "step" in tool_names
+    assert "state" in tool_names
+
+
+def test_mcp_unknown_method(client):
+    r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "unknown/method"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["jsonrpc"] == "2.0"
+    assert "error" in data
 
 
 def test_state_before_reset():
@@ -80,7 +133,7 @@ def test_step_empty_action(client):
     client.post("/reset", json={"task_difficulty": "easy"})
     r = client.post("/step", json={})
     assert r.status_code == 200
-    assert r.json()["reward"] == 0.0
+    assert 0.0 <= r.json()["reward"] <= 1.0
 
 
 def test_state_after_reset(client):

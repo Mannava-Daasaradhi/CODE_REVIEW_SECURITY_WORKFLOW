@@ -7,22 +7,13 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
-
-    # OpenAI API key — used by baseline script only, never by the environment server
-    openai_api_key: str = ""
-
-    # Episode data directory (relative to CWD — resolved at runtime)
+    # FIX: was openai_api_key — project uses Gemini, not OpenAI
+    # The baseline script reads GEMINI_API_KEY directly from os.environ,
+    # but declaring it here gives pydantic-settings validation + IDE visibility.
+    gemini_api_key: str = ""
     tasks_data_dir: str = "data/tasks"
-
-    # Server bind settings
-    env_host: str = "0.0.0.0"
-    env_port: int = 7860
-
-    # Logging
     log_level: str = "INFO"
-
-    # Episode ordering seed — controls round-robin start when difficulty=None
-    episode_seed: int = 42
+    default_task_difficulty: str = "easy"
 
 
 settings = Settings()
