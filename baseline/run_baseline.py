@@ -21,7 +21,8 @@ import time
 from pathlib import Path
 
 import httpx
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from google.api_core.exceptions import ResourceExhausted
 
 DIFFICULTIES = ["easy", "medium", "hard"]
@@ -62,12 +63,16 @@ def _parse_retry_delay(error: ResourceExhausted) -> int:
     return 65
 
 
-def call_agent(model: genai.GenerativeModel, observation: dict, max_retries: int = 5) -> dict:
+def call_agent(client: genai.Client, observation: dict, max_retries: int = 5) -> dict:
     full_prompt = SYSTEM_PROMPT + "\n\n" + build_user_prompt(observation)
 
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(full_prompt)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=full_prompt,
+                config=types.GenerateContentConfig(temperature=0),
+            )
             raw = response.text.strip()
 
             # Strip markdown code fences if model adds them anyway
@@ -102,13 +107,7 @@ def run_baseline(env_url: str) -> None:
         print("ERROR: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
         sys.exit(1)
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
-        generation_config=genai.types.GenerationConfig(
-            temperature=0,  # Deterministic output
-        ),
-    )
+    client = genai.Client(api_key=api_key)
 
     results = []
 
@@ -136,7 +135,7 @@ def run_baseline(env_url: str) -> None:
 
             # Agent inference
             try:
-                action = call_agent(model, observation)
+                action = call_agent(client, observation)
             except Exception as e:
                 print(f"  ERROR: Agent call failed: {e}", file=sys.stderr)
                 action = {"flagged_lines": [], "findings": [], "review_text": ""}
