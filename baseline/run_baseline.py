@@ -8,6 +8,7 @@ Usage:
     export GEMINI_API_KEY=your_key_here
     python baseline/run_baseline.py --env-url http://localhost:7860
     python baseline/run_baseline.py --env-url https://your-space.hf.space
+    python baseline/run_baseline.py --env-url https://your-space.hf.space --model gemini-2.5-flash-lite
 
 Output: baseline/results.json
 """
@@ -15,69 +16,57 @@ Output: baseline/results.json
 import argparse
 import json
 import os
-import re
 import sys
 import time
 from pathlib import Path
 
 import httpx
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
 
 DIFFICULTIES = ["easy", "medium", "hard"]
 RESULTS_PATH = Path(__file__).parent / "results.json"
 
-# gemini-1.5-flash: 1500 req/day free tier (vs 20/day for gemini-2.5-flash)
-MODEL_NAME = "gemini-1.5-flash"
-
-# Delay between difficulty runs to stay under free-tier RPM limit
-INTER_RUN_DELAY = 15  # seconds
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = """You are a senior software engineer performing code review and security auditing.
 
+IMPORTANT: Lines are numbered starting at 1. Count each line of code carefully.
+The first line of the code snippet is line 1, the second is line 2, and so on.
+Empty lines and comment lines count toward line numbering.
+
 Analyze the provided code carefully and respond ONLY with a valid JSON object in this exact format:
 {
-  "flagged_lines": [<list of integer line numbers where bugs exist, 1-indexed>],
+  "flagged_lines": [<list of integer line numbers (1-indexed) where bugs exist>],
   "findings": [
     { "type": "<vulnerability type, e.g. sql_injection, hardcoded_secret, xss>", "description": "<explanation>" }
   ],
   "review_text": "<structured code review: include severity labels (critical/high/medium/low), line references (line N or LN), actionable recommendations (should/must/recommend), and category labels (bug/security/vulnerability/style/performance)>"
 }
 
+For flagged_lines: flag the exact line numbers where bugs or errors occur.
+For findings: use snake_case type names like sql_injection, hardcoded_secret, xss, path_traversal, insecure_deserialization.
+For review_text: always reference specific line numbers, assign severity, use actionable language, and categorize issues.
+
 Respond with JSON only. No markdown, no explanation, no code fences."""
 
 
 def build_user_prompt(observation: dict) -> str:
+    # Add explicit line numbers to the code snippet so the model can reference them accurately
+    code_lines = observation["code_snippet"].splitlines()
+    numbered = "\n".join(f"{i+1}: {line}" for i, line in enumerate(code_lines))
     return (
         f"Task: {observation['instructions']}\n\n"
-        f"Code:\n{observation['code_snippet']}"
+        f"Code (line numbers shown for reference):\n{numbered}"
     )
 
 
-def _parse_retry_delay(error_message: str) -> int:
-    """
-    Extract retry delay seconds from the error message if present.
-    Falls back to 65 seconds (safe default above free-tier 1-min window).
-    """
-    match = re.search(r"retry in (\d+)", error_message)
-    if match:
-        return int(match.group(1)) + 5  # add 5s buffer
-    match = re.search(r"retryDelay.*?(\d+)s", error_message)
-    if match:
-        return int(match.group(1)) + 5
-    return 65
-
-
-def call_agent(client: genai.Client, observation: dict, max_retries: int = 5) -> dict:
+def call_agent(model: genai.GenerativeModel, observation: dict, max_retries: int = 5) -> dict:
     full_prompt = SYSTEM_PROMPT + "\n\n" + build_user_prompt(observation)
 
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=full_prompt,
-                config=types.GenerateContentConfig(temperature=0),
-            )
+            response = model.generate_content(full_prompt)
             raw = response.text.strip()
 
             # Strip markdown code fences if model adds them anyway
@@ -89,41 +78,45 @@ def call_agent(client: genai.Client, observation: dict, max_retries: int = 5) ->
 
             return json.loads(raw)
 
-        except Exception as e:
-            error_str = str(e)
-
-            # Handle rate limit / quota errors (429)
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
-                if attempt == max_retries - 1:
-                    print(
-                        "  ERROR: Max retries reached. Quota may be exhausted for today.",
-                        file=sys.stderr,
-                    )
-                    raise
-
-                wait_time = _parse_retry_delay(error_str)
+        except ResourceExhausted as e:
+            if attempt == max_retries - 1:
                 print(
-                    f"  [Rate Limit] Quota exceeded. "
-                    f"Sleeping {wait_time}s before retrying "
-                    f"(Attempt {attempt + 1}/{max_retries})...",
+                    "  ERROR: Max retries reached. Daily Free Tier quota may be exhausted.",
                     file=sys.stderr,
                 )
-                time.sleep(wait_time)
-            else:
-                # Non-rate-limit error — don't retry
+                raise e
+
+            wait_time = 45
+            print(
+                f"  [Rate Limit] Free Tier quota exceeded. "
+                f"Sleeping {wait_time}s before retry (attempt {attempt + 1}/{max_retries})...",
+                file=sys.stderr,
+            )
+            time.sleep(wait_time)
+
+        except json.JSONDecodeError as e:
+            print(f"  WARNING: JSON parse failed on attempt {attempt + 1}: {e}", file=sys.stderr)
+            if attempt == max_retries - 1:
                 raise
 
-    raise RuntimeError("call_agent: exhausted retries without raising")
+    # Should not be reached, but satisfy type checker
+    return {"flagged_lines": [], "findings": [], "review_text": ""}
 
 
-def run_baseline(env_url: str) -> None:
+def run_baseline(env_url: str, model_name: str) -> None:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("ERROR: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
         sys.exit(1)
 
-    client = genai.Client(api_key=api_key)
-    print(f"Model: {MODEL_NAME}\n")
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(
+        model_name=model_name,
+        generation_config=genai.types.GenerationConfig(
+            temperature=0,  # Deterministic output
+        ),
+    )
+    print(f"Model: {model_name}")
 
     results = []
 
@@ -136,11 +129,6 @@ def run_baseline(env_url: str) -> None:
         print(f"Environment healthy: {env_url}\n")
 
         for i, difficulty in enumerate(DIFFICULTIES):
-            # Polite delay between runs to stay under free-tier RPM limit
-            if i > 0:
-                print(f"  [Rate limit guard] Waiting {INTER_RUN_DELAY}s before next run...\n")
-                time.sleep(INTER_RUN_DELAY)
-
             print(f"Running difficulty: {difficulty}")
 
             # Reset
@@ -151,7 +139,7 @@ def run_baseline(env_url: str) -> None:
 
             # Agent inference
             try:
-                action = call_agent(client, observation)
+                action = call_agent(model, observation)
             except Exception as e:
                 print(f"  ERROR: Agent call failed: {e}", file=sys.stderr)
                 action = {"flagged_lines": [], "findings": [], "review_text": ""}
@@ -163,7 +151,7 @@ def run_baseline(env_url: str) -> None:
 
             reward = result["reward"]
             info = result.get("info", {})
-            print(f"  Reward: {reward:.4f}  Info: {info}\n")
+            print(f"  Reward: {reward:.4f}  Info: {info}")
 
             results.append({
                 "difficulty": difficulty,
@@ -172,6 +160,13 @@ def run_baseline(env_url: str) -> None:
                 "info": info,
                 "action": action,
             })
+
+            # Rate limit guard between runs (skip after last one)
+            if i < len(DIFFICULTIES) - 1:
+                print("  [Rate limit guard] Waiting 15s before next run...")
+                time.sleep(15)
+
+        print()
 
     # Write results
     RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -185,11 +180,19 @@ def run_baseline(env_url: str) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run Gemini baseline against the OpenEnv environment.")
+    parser = argparse.ArgumentParser(
+        description="Run Gemini baseline against the OpenEnv environment."
+    )
     parser.add_argument(
         "--env-url",
         default="http://localhost:7860",
         help="Base URL of the running environment (default: http://localhost:7860)",
     )
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Gemini model name to use (default: {DEFAULT_MODEL}). "
+             "Use 'gemini-2.5-flash-lite' if you hit quota limits on the default.",
+    )
     args = parser.parse_args()
-    run_baseline(args.env_url)
+    run_baseline(args.env_url, args.model)

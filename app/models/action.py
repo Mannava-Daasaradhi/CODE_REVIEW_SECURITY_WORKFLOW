@@ -21,7 +21,7 @@ class Action(BaseModel):
 
     flagged_lines: list[int] = Field(
         default_factory=list,
-        description="Line numbers (1-indexed) where bugs were detected",
+        description="Line numbers (1-indexed, ≥1) where bugs were detected",
     )
     findings: list[Finding] = Field(
         default_factory=list,
@@ -37,7 +37,5 @@ class Action(BaseModel):
     def lines_must_be_positive(cls, v: list[int]) -> list[int]:
         invalid = [n for n in v if n < 1]
         if invalid:
-            raise ValueError(
-                f"flagged_lines must be 1-indexed (≥1). Invalid values: {invalid}"
-            )
+            raise ValueError(f"flagged_lines must be 1-indexed (≥1). Invalid values: {invalid}")
         return v
