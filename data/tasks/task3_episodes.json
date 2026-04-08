@@ -2,101 +2,111 @@
   {
     "task_id": "task3_ep_001",
     "difficulty": "hard",
-    "code_snippet": "--- a/auth.py\n+++ b/auth.py\n@@ -10,6 +10,10 @@\n+def authenticate(username, password):\n+    token = request.args.get('token')\n+    query = f\"SELECT * FROM sessions WHERE token='{token}'\"\n+    return db.execute(query).fetchone()\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/auth.py\n+++ b/auth.py\n@@ -10,8 +10,12 @@\n def authenticate(request):\n+    token = request.args.get('token')\n+    db.execute(f'SELECT * FROM sessions WHERE token={token}')\n+    SECRET_KEY = 'hardcoded-jwt-secret-abc123'\n+    user_id = request.args.get('id')\n+    return db.query(f'SELECT * FROM users WHERE id={user_id}')",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [],
-      "vuln_types": ["sql_injection"]
+      "bug_lines": [3, 6],
+      "vuln_types": ["sql_injection", "hardcoded_secret"],
+      "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_002",
     "difficulty": "hard",
-    "code_snippet": "--- a/utils.py\n+++ b/utils.py\n@@ -5,4 +5,8 @@\n+def process(items):\n+    SECRET = 'hardcoded-db-password'\n+    for i in range(1, len(items)):\n+        print(items[i])\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/api/upload.py\n+++ b/api/upload.py\n@@ -5,10 +5,15 @@\n from flask import request, send_file\n import os\n import subprocess\n+\n+def upload_file():\n+    filename = request.form.get('filename')\n+    path = os.path.join('/var/uploads', filename)\n+    with open(path, 'wb') as f:\n+        f.write(request.data)\n+    subprocess.call('process_upload.sh ' + filename, shell=True)\n+    return send_file(path)",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [3],
-      "vuln_types": ["hardcoded_secret"]
+      "bug_lines": [9],
+      "vuln_types": ["path_traversal", "command_injection"],
+      "review_quality_keywords": ["high", "line", "should", "security"]
     }
   },
   {
     "task_id": "task3_ep_003",
     "difficulty": "hard",
-    "code_snippet": "--- a/views.py\n+++ b/views.py\n@@ -1,3 +1,7 @@\n+from flask import request, render_template_string\n+def display_comment():\n+    comment = request.form.get('comment')\n+    return render_template_string('<p>' + comment + '</p>')\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/utils/crypto.py\n+++ b/utils/crypto.py\n@@ -1,6 +1,10 @@\n import hashlib\n import random\n+\n+def hash_password(password):\n+    salt = str(random.random())\n+    return hashlib.md5((password + salt).encode()).hexdigest()\n+\n+def verify_token(a, b):\n+    return a == b",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [],
-      "vuln_types": ["xss"]
+      "bug_lines": [5, 6, 9],
+      "vuln_types": ["weak_cryptography", "insecure_random"],
+      "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_004",
     "difficulty": "hard",
-    "code_snippet": "--- a/files.py\n+++ b/files.py\n@@ -3,5 +3,9 @@\n+import os\n+from flask import request, send_file\n+def serve_file():\n+    name = request.args.get('name')\n+    return send_file(os.path.join('/uploads', name))\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/views/profile.py\n+++ b/views/profile.py\n@@ -3,8 +3,13 @@\n from flask import request, render_template_string\n from models import User\n+\n+def update_profile():\n+    bio = request.form.get('bio')\n+    user_id = request.form.get('user_id')\n+    template = f'<div class=\"bio\">{bio}</div>'\n+    User.query.filter_by(id=user_id).update({'bio': bio})\n+    return render_template_string(template)",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [],
-      "vuln_types": ["path_traversal"]
+      "bug_lines": [8],
+      "vuln_types": ["xss", "broken_access_control"],
+      "review_quality_keywords": ["high", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_005",
     "difficulty": "hard",
-    "code_snippet": "--- a/runner.py\n+++ b/runner.py\n@@ -1,4 +1,9 @@\n+import subprocess\n+\n+DEPLOY_KEY = 'sk-deploy-abc999'\n+\n+def run_job(job_name):\n+    result = subprocess.call(f'bash jobs/{job_name}.sh', shell=True)\n+    return result\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/jobs/report.py\n+++ b/jobs/report.py\n@@ -2,7 +2,13 @@\n import subprocess\n import os\n from config import settings\n+\n+REPORT_SECRET = 'r3p0rt-s3cr3t-k3y'\n+\n+def generate_report(report_id):\n+    cmd = 'generate.sh --id ' + report_id\n+    result = subprocess.call(cmd, shell=True)\n+    if result != 0:\n+        raise Exception('Report generation failed')",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [],
-      "vuln_types": ["hardcoded_secret", "command_injection"]
+      "bug_lines": [11],
+      "vuln_types": ["hardcoded_secret", "command_injection"],
+      "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_006",
     "difficulty": "hard",
-    "code_snippet": "--- a/search.py\n+++ b/search.py\n@@ -2,4 +2,9 @@\n+from flask import request, render_template_string\n+\n+def search():\n+    term = request.args.get('q', '')\n+    rows = db.execute(f\"SELECT * FROM products WHERE name='{term}'\")\n+    return render_template_string(f'<ul>{term}</ul>')\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/api/data.py\n+++ b/api/data.py\n@@ -1,5 +1,10 @@\n import xml.etree.ElementTree as ET\n import pickle\n from flask import request\n+\n+def ingest_data():\n+    fmt = request.args.get('format')\n+    if fmt == 'xml':\n+        tree = ET.fromstring(request.data)\n+        return tree.find('record').text\n+    elif fmt == 'pickle':\n+        return pickle.loads(request.data)",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [],
-      "vuln_types": ["sql_injection", "xss"]
+      "bug_lines": [8, 11],
+      "vuln_types": ["xxe", "insecure_deserialization"],
+      "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_007",
     "difficulty": "hard",
-    "code_snippet": "--- a/payments.py\n+++ b/payments.py\n@@ -1,5 +1,10 @@\n+STRIPE_SECRET = 'sk_live_hardcoded_key_123'\n+\n+def process_payment(amount):\n+    if amount > 0:\n+        charge(amount)\n+        return True\n+    return False\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/services/payment.py\n+++ b/services/payment.py\n@@ -4,8 +4,12 @@\n import requests\n from decimal import Decimal\n+\n+STRIPE_SECRET = 'sk_live_abc123xyz789'\n+\n+def charge_card(amount, card_token):\n+    total = Decimal(amount)\n+    resp = requests.post('https://api.stripe.com/v1/charges',\n+        auth=(STRIPE_SECRET, ''),\n+        data={'amount': int(total * 100), 'source': card_token})\n+    return resp.json()",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [4],
-      "vuln_types": ["hardcoded_secret"]
+      "bug_lines": [7],
+      "vuln_types": ["hardcoded_secret"],
+      "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_008",
     "difficulty": "hard",
-    "code_snippet": "--- a/admin.py\n+++ b/admin.py\n@@ -3,5 +3,10 @@\n+from flask import request, jsonify\n+\n+def delete_user():\n+    user_id = request.args.get('id')\n+    db.execute(f\"DELETE FROM users WHERE id='{user_id}'\")\n+    return jsonify({'status': 'deleted'})\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/admin/users.py\n+++ b/admin/users.py\n@@ -2,6 +2,10 @@\n from flask import request, jsonify\n from models import User\n+\n+def delete_user():\n+    user_id = request.args.get('id')\n+    User.query.filter_by(id=user_id).delete()\n+    db.session.commit()\n+    return jsonify({'deleted': user_id})",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
       "bug_lines": [],
-      "vuln_types": ["sql_injection", "broken_access_control"]
+      "vuln_types": ["broken_access_control"],
+      "review_quality_keywords": ["high", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_009",
     "difficulty": "hard",
-    "code_snippet": "--- a/export.py\n+++ b/export.py\n@@ -2,5 +2,10 @@\n+import os\n+from flask import request, send_file\n+\n+def export_report():\n+    report = request.args.get('report')\n+    items = get_items()\n+    data = [items[i] for i in range(1, len(items))]\n+    path = os.path.join('/reports', report)\n+    return send_file(path)\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/auth/jwt.py\n+++ b/auth/jwt.py\n@@ -1,5 +1,9 @@\n import jwt\n+\n+JWT_SECRET = 'secret'\n+\n+def decode_token(token):\n+    return jwt.decode(token, JWT_SECRET, algorithms=['none'])\n+\n+def encode_token(payload):\n+    return jwt.encode(payload, JWT_SECRET, algorithm='none')",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [7],
-      "vuln_types": ["path_traversal"]
+      "bug_lines": [5, 8],
+      "vuln_types": ["hardcoded_secret", "weak_cryptography"],
+      "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
   {
     "task_id": "task3_ep_010",
     "difficulty": "hard",
-    "code_snippet": "--- a/notify.py\n+++ b/notify.py\n@@ -1,4 +1,9 @@\n+import subprocess\n+\n+def send_alert(recipient, message):\n+    total = 0\n+    for i in range(len(message)):\n+        total = total - ord(message[i])\n+    subprocess.call(f'mail -s alert {recipient}', shell=True)\n",
-    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "code_snippet": "--- a/api/search.py\n+++ b/api/search.py\n@@ -2,6 +2,11 @@\n from flask import request, render_template_string\n from models import db\n+\n+def search_products():\n+    term = request.args.get('q', '')\n+    results = db.execute(f\"SELECT * FROM products WHERE name LIKE '%{term}%'\")\n+    template = f'<ul>{% for r in results %}<li>{r.name}</li>{% endfor %}</ul>'\n+    return render_template_string(template, results=results)",
+    "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
-      "bug_lines": [6],
-      "vuln_types": ["command_injection"]
+      "bug_lines": [6, 7],
+      "vuln_types": ["sql_injection", "xss"],
+      "review_quality_keywords": ["high", "line", "must", "security"]
     }
   }
 ]

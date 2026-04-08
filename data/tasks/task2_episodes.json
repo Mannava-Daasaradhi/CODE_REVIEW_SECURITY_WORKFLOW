@@ -2,91 +2,91 @@
   {
     "task_id": "task2_ep_001",
     "difficulty": "medium",
-    "code_snippet": "def login(username, password):\n    query = f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n    result = db.execute(query)\n    return result.fetchone()\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "def login(username, password):\n    query = f\"SELECT * FROM users WHERE username='{username}'\"\n    API_KEY = 'sk-hardcoded-key-here'\n    result = db.execute(query)\n    return result",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
-      "vuln_types": ["sql_injection"]
+      "vuln_types": ["sql_injection", "hardcoded_secret"]
     }
   },
   {
     "task_id": "task2_ep_002",
     "difficulty": "medium",
-    "code_snippet": "import os\n\nAPI_KEY = 'sk-prod-abc123hardcoded'\n\ndef get_data(user_input):\n    query = f'SELECT * FROM records WHERE id={user_input}'\n    return db.execute(query).fetchall()\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
-    "ground_truth": {
-      "vuln_types": ["hardcoded_secret", "sql_injection"]
-    }
-  },
-  {
-    "task_id": "task2_ep_003",
-    "difficulty": "medium",
-    "code_snippet": "from flask import request, render_template_string\n\ndef search():\n    query = request.args.get('q', '')\n    return render_template_string(f'<h1>Results for: {query}</h1>')\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "from flask import request, render_template_string\n\ndef search():\n    query = request.args.get('q')\n    template = f'<h1>Results for: {query}</h1>'\n    return render_template_string(template)",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
       "vuln_types": ["xss"]
     }
   },
   {
-    "task_id": "task2_ep_004",
+    "task_id": "task2_ep_003",
     "difficulty": "medium",
-    "code_snippet": "import subprocess\nfrom flask import request\n\ndef ping():\n    host = request.args.get('host')\n    result = subprocess.call(f'ping -c 1 {host}', shell=True)\n    return str(result)\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "import subprocess\nfrom flask import request\n\ndef ping():\n    host = request.args.get('host')\n    result = subprocess.call('ping -c 1 ' + host, shell=True)\n    return str(result)",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
       "vuln_types": ["command_injection"]
     }
   },
   {
+    "task_id": "task2_ep_004",
+    "difficulty": "medium",
+    "code_snippet": "import pickle\nfrom flask import request\n\ndef load_session():\n    data = request.cookies.get('session')\n    obj = pickle.loads(data.encode('latin1'))\n    return obj",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
+    "ground_truth": {
+      "vuln_types": ["insecure_deserialization"]
+    }
+  },
+  {
     "task_id": "task2_ep_005",
     "difficulty": "medium",
-    "code_snippet": "import os\nfrom flask import request, send_file\n\ndef download():\n    filename = request.args.get('file')\n    path = os.path.join('/var/uploads', filename)\n    return send_file(path)\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "DB_PASSWORD = 'admin123'\nAWS_SECRET = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'\n\ndef get_user(user_id):\n    query = f'SELECT * FROM users WHERE id={user_id}'\n    return db.execute(query)",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
-      "vuln_types": ["path_traversal"]
+      "vuln_types": ["hardcoded_secret", "sql_injection"]
     }
   },
   {
     "task_id": "task2_ep_006",
     "difficulty": "medium",
-    "code_snippet": "DB_PASSWORD = 'super_secret_db_pass_2024'\n\ndef get_user(user_id):\n    conn = connect(password=DB_PASSWORD)\n    return conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "from flask import request, send_file\nimport os\n\ndef download():\n    filename = request.args.get('file')\n    path = os.path.join('/var/uploads', filename)\n    return send_file(path)",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
-      "vuln_types": ["hardcoded_secret"]
+      "vuln_types": ["path_traversal"]
     }
   },
   {
     "task_id": "task2_ep_007",
     "difficulty": "medium",
-    "code_snippet": "from flask import request, render_template_string\n\ndef profile():\n    user_id = request.args.get('id')\n    name = request.args.get('name', '')\n    row = db.execute(f\"SELECT * FROM users WHERE id='{user_id}'\")\n    return render_template_string(f'<p>Hello {name}</p>')\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "def safe_query(username):\n    cursor = db.cursor()\n    cursor.execute('SELECT * FROM users WHERE username = %s', (username,))\n    return cursor.fetchone()",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
-      "vuln_types": ["sql_injection", "xss"]
+      "vuln_types": []
     }
   },
   {
     "task_id": "task2_ep_008",
     "difficulty": "medium",
-    "code_snippet": "from flask import request, jsonify\n\ndef get_account():\n    account_id = request.args.get('account_id')\n    account = db.execute('SELECT * FROM accounts WHERE id = ?', (account_id,)).fetchone()\n    return jsonify(account)\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "from flask import request, redirect\n\ndef redirect_user():\n    url = request.args.get('next')\n    return redirect(url)\n\nAPI_TOKEN = 'Bearer eyJhbGciOiJIUzI1NiJ9.secret'",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
-      "vuln_types": ["broken_access_control"]
+      "vuln_types": ["open_redirect", "hardcoded_secret"]
     }
   },
   {
     "task_id": "task2_ep_009",
     "difficulty": "medium",
-    "code_snippet": "import subprocess\n\nSECRET_TOKEN = 'ghp_hardcoded_token_xyz'\n\ndef run_script(script_name):\n    output = subprocess.check_output(f'bash scripts/{script_name}', shell=True)\n    return output.decode()\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "import xml.etree.ElementTree as ET\nfrom flask import request\n\ndef parse_xml():\n    data = request.data\n    tree = ET.fromstring(data)\n    return tree.find('user').text",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
-      "vuln_types": ["hardcoded_secret", "command_injection"]
+      "vuln_types": ["xxe"]
     }
   },
   {
     "task_id": "task2_ep_010",
     "difficulty": "medium",
-    "code_snippet": "import pickle\nfrom flask import request\n\ndef load_session():\n    data = request.cookies.get('session_data')\n    session = pickle.loads(bytes.fromhex(data))\n    return session\n",
-    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route. For each finding, provide the vulnerability type and a description.",
+    "code_snippet": "from flask import request\nimport subprocess\n\nSECRET_KEY = 'my-very-secret-key-12345'\n\ndef run_report():\n    report_name = request.form.get('report')\n    cmd = f'generate_report.sh {report_name}'\n    subprocess.call(cmd, shell=True)\n    return 'Done'",
+    "instructions": "Identify all OWASP Top 10 vulnerabilities present in this web route.",
     "ground_truth": {
-      "vuln_types": ["insecure_deserialization"]
+      "vuln_types": ["hardcoded_secret", "command_injection"]
     }
   }
 ]

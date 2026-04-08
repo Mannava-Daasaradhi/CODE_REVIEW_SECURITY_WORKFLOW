@@ -1,8 +1,8 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Finding(BaseModel):
-    model_config = ConfigDict(strict=True)  # FIX: strict mode at route boundary
+    model_config = ConfigDict(strict=True)  # strict mode at route boundary
 
     type: str = Field(..., description="Vulnerability type, e.g. 'sql_injection', 'hardcoded_secret'")
     description: str = Field(..., description="Human-readable description of the finding")
@@ -17,7 +17,7 @@ class Action(BaseModel):
     Task 2 graders score findings only.
     Task 3 graders score all three fields in a weighted composite.
     """
-    model_config = ConfigDict(strict=True)  # FIX: strict mode — rejects unexpected field types
+    model_config = ConfigDict(strict=True)  # strict mode — rejects unexpected field types
 
     flagged_lines: list[int] = Field(
         default_factory=list,
@@ -31,13 +31,6 @@ class Action(BaseModel):
         default="",
         description="Free-form code review text (scored in Task 3 only)",
     )
-
-    # FIX: validate that all flagged line numbers are >= 1 (1-indexed, no zero or negative)
-    @classmethod
-    def model_post_init(cls, __context) -> None:
-        pass  # validation handled via validator below
-
-    from pydantic import field_validator
 
     @field_validator("flagged_lines")
     @classmethod

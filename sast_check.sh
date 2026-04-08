@@ -1,17 +1,17 @@
 #!/bin/bash
 # ============================================================
-# sast_check.sh — Run Bandit SAST scan on src/
+# sast_check.sh — Run Bandit SAST scan on app/
 # Run this after Antigravity completes each module.
 # If it fails → use _context/security_audit_handoff.md
 # ============================================================
 #
 # USAGE:
-#   ./sast_check.sh                    # scan all of src/
-#   ./sast_check.sh src/crypto_layer   # scan one module
+#   ./sast_check.sh                    # scan all of app/
+#   ./sast_check.sh app/graders        # scan one module
 #   ./sast_check.sh --strict           # fail on MEDIUM+ (default: HIGH only)
 #
-# INSTALL (inside your conda env):
-#   pip install bandit semgrep
+# INSTALL (inside your venv):
+#   pip install bandit
 #
 # OUTPUT:
 #   Terminal: color-coded summary
@@ -22,10 +22,10 @@ set -e
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-TARGET="${1:-src}"
+TARGET="${1:-app}"
 STRICT=false
 [[ "$*" == *"--strict"* ]] && STRICT=true
-[[ "$TARGET" == "--strict" ]] && TARGET="src"
+[[ "$TARGET" == "--strict" ]] && TARGET="app"
 
 mkdir -p logs
 
@@ -44,11 +44,6 @@ if ! command -v bandit &> /dev/null; then
 fi
 
 # --- Run Bandit ---
-# Severity levels: LOW=1 MEDIUM=2 HIGH=3
-# Confidence levels: LOW=1 MEDIUM=2 HIGH=3
-# We fail the build on HIGH severity + HIGH confidence by default
-# In strict mode: fail on MEDIUM severity + MEDIUM confidence
-
 if [ "$STRICT" = true ]; then
   SEVERITY_LEVEL="medium"
   CONFIDENCE_LEVEL="medium"
@@ -61,14 +56,13 @@ fi
 
 echo ""
 
-# Run bandit, output to both terminal and log files
 bandit \
   -r "$TARGET" \
   -f json \
   -o logs/sast_bandit.json \
   --severity-level "$SEVERITY_LEVEL" \
   --confidence-level "$CONFIDENCE_LEVEL" \
-  --exclude ".venv,venv,tests,notebooks" \
+  --exclude ".venv,venv,tests" \
   2>/dev/null || true
 
 bandit \
@@ -77,7 +71,7 @@ bandit \
   -o logs/sast_bandit.txt \
   --severity-level "$SEVERITY_LEVEL" \
   --confidence-level "$CONFIDENCE_LEVEL" \
-  --exclude ".venv,venv,tests,notebooks" \
+  --exclude ".venv,venv,tests" \
   2>&1 | tail -40
 
 # --- Parse results ---
@@ -95,7 +89,6 @@ with open(report_path) as f:
     report = json.load(f)
 
 results = report.get("results", [])
-metrics = report.get("metrics", {}).get("_totals", {})
 
 highs   = [r for r in results if r["issue_severity"] == "HIGH"]
 mediums = [r for r in results if r["issue_severity"] == "MEDIUM"]
