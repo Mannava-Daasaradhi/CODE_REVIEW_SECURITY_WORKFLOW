@@ -3,7 +3,7 @@ version: "1.0.0"
 description: >
   OpenEnv environment for training and evaluating AI agents on code review
   and security auditing tasks. Three difficulty tiers with deterministic graders.
-author: your-team-name
+author: Mannava-Daasaradhi
 license: MIT
 
 endpoints:

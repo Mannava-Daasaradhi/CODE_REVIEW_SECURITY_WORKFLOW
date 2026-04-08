@@ -21,7 +21,7 @@ An OpenEnv-compliant AI training environment built for the Scalar Hackathon by M
 │              ┌──────────▼──────────┐                    │
 │              │   Grader Router     │                    │
 │              ├─────────────────────┤                    │
-│              │ Task 1: bug detect  │ (AST-based)        │
+│              │ Task 1: bug detect  │ (line matching)    │
 │              │ Task 2: OWASP vulns │ (regex-based)      │
 │              │ Task 3: PR review   │ (composite)        │
 │              └──────────┬──────────┘                    │
@@ -63,7 +63,7 @@ pr-review-env/
 │   │
 │   ├── graders/
 │   │   ├── base_grader.py       # Abstract base class all graders inherit from
-│   │   ├── task1_grader.py      # Easy: AST-based bug line detection
+│   │   ├── task1_grader.py      # Easy: recall-based bug line detection
 │   │   ├── task2_grader.py      # Medium: OWASP vulnerability keyword matching
 │   │   └── task3_grader.py      # Hard: weighted composite of bug + vuln + review quality
 │   │
@@ -79,7 +79,7 @@ pr-review-env/
 │       └── task3_episodes.json  # Hard difficulty episodes
 │
 ├── baseline/
-│   └── run_baseline.py          # Standalone OpenAI agent script for benchmarking
+│   └── run_baseline.py          # Standalone Gemini agent script for benchmarking
 │
 ├── tests/
 │   ├── test_graders.py          # Determinism tests + correctness tests per grader
@@ -89,7 +89,7 @@ pr-review-env/
 ├── openenv.yaml                 # OpenEnv metadata (required for openenv validate)
 ├── Dockerfile                   # Production container, linux/amd64, port 7860
 ├── requirements.txt             # All deps pinned at exact versions
-├── .env.example                 # Safe template — copy to .env, fill OPENAI_API_KEY
+├── .env.example                 # Safe template — copy to .env, fill GEMINI_API_KEY
 ├── .gitignore
 ├── README.md                    # This file
 └── claude.md                    # Internal AI passport (architecture decisions)
@@ -102,7 +102,7 @@ pr-review-env/
 - Python 3.11 (exact — not 3.10, not 3.12)
 - Docker (for containerization and local testing)
 - `openenv` CLI installed (`pip install openenv`)
-- An OpenAI API key (for the baseline script only — not needed to run the environment)
+- A Gemini API key (for the baseline script only — not needed to run the environment)
 - A HuggingFace account with Spaces access (for deployment)
 
 ---
@@ -125,7 +125,7 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=sk-...
+# Edit .env and set GEMINI_API_KEY=AI...
 # Never commit .env
 ```
 
@@ -299,11 +299,11 @@ pytest tests/test_graders.py -v -k "determinism"
 
 ## Running the Baseline Script
 
-The baseline script sends each task episode to the environment via HTTP, calls OpenAI to generate an agent response, and records the scores. It is used to produce the baseline numbers reported in the README and required for Phase 1 pass.
+The baseline script sends each task episode to the environment via HTTP, calls Gemini to generate an agent response, and records the scores. It is used to produce the baseline numbers reported in the README and required for Phase 1 pass.
 
 ```bash
 # Environment must be running first (local or deployed)
-export OPENAI_API_KEY=sk-...
+export GEMINI_API_KEY=AI...
 
 # Against local instance
 python baseline/run_baseline.py --env-url http://localhost:7860
@@ -314,7 +314,7 @@ python baseline/run_baseline.py --env-url https://your-space.hf.space
 
 Output is written to `baseline/results.json`. The scores from this file are what go into the README's Baseline Scores section below.
 
-**Note**: The baseline script is the only component that calls OpenAI. The environment server itself never calls any external API.
+**Note**: The baseline script is the only component that calls Gemini. The environment server itself never calls any external API.
 
 ---
 
@@ -322,7 +322,7 @@ Output is written to `baseline/results.json`. The scores from this file are what
 
 > Populated after Phase 9 (live deployment + baseline run). Fill these in before submission.
 
-| Task | Difficulty | Baseline Score (GPT-4o) | Episodes |
+| Task | Difficulty | Baseline Score (Gemini 2.0 Flash) | Episodes |
 |---|---|---|---|
 | Task 1 | Easy | TBD | TBD |
 | Task 2 | Medium | TBD | TBD |
@@ -385,7 +385,7 @@ Episodes live in `data/tasks/`. Each file is a JSON array of episode objects.
 ## Deployment (HuggingFace Spaces)
 
 1. Create a new HuggingFace Space with Docker SDK
-2. Set `OPENAI_API_KEY` in the Space's Secrets settings (not in the Dockerfile)
+2. Set `GEMINI_API_KEY` in the Space's Secrets settings (not in the Dockerfile)
 3. Push the repository to the Space's git remote
 4. Confirm the Space builds and the health check at `/` responds
 5. Run `openenv validate https://your-space.hf.space`
@@ -412,7 +412,7 @@ All configuration lives in `.env` and is read by `app/config.py`. Never set thes
 
 | Key | Required | Default | Description |
 |---|---|---|---|
-| `OPENAI_API_KEY` | Baseline script only | — | OpenAI API key for baseline inference. Not used by the environment server. |
+| `GEMINI_API_KEY` | Baseline script only | — | Gemini API key for baseline inference. Not used by the environment server. |
 | `ENV_HOST` | No | `0.0.0.0` | Host the FastAPI server binds to |
 | `ENV_PORT` | No | `7860` | Port (must be 7860 for HuggingFace Spaces) |
 | `LOG_LEVEL` | No | `INFO` | Logging level: DEBUG, INFO, WARNING, ERROR |
@@ -424,7 +424,7 @@ All configuration lives in `.env` and is read by `app/config.py`. Never set thes
 
 - **Graders never execute analyzed code.** All analysis uses Python's `ast` module (parse tree only) and `re` (regex). No `exec()` or `eval()` is ever called on agent-submitted or episode code.
 - **Ground truth is server-side only.** It is loaded from the episode JSON at grading time and never appears in any API response.
-- **No secrets in code.** `OPENAI_API_KEY` is read exclusively from environment variables.
+- **No secrets in code.** `GEMINI_API_KEY` is read exclusively from environment variables.
 - **Input validation at every boundary.** All agent actions are validated by Pydantic v2 strict mode before reaching any grader logic.
 - **Threat model**: See `claude.md` Section 2 for full trust boundary and threat actor analysis.
 
