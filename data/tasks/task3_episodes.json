@@ -28,5 +28,75 @@
       "bug_lines": [],
       "vuln_types": ["xss"]
     }
+  },
+  {
+    "task_id": "task3_ep_004",
+    "difficulty": "hard",
+    "code_snippet": "--- a/files.py\n+++ b/files.py\n@@ -3,5 +3,9 @@\n+import os\n+from flask import request, send_file\n+def serve_file():\n+    name = request.args.get('name')\n+    return send_file(os.path.join('/uploads', name))\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [],
+      "vuln_types": ["path_traversal"]
+    }
+  },
+  {
+    "task_id": "task3_ep_005",
+    "difficulty": "hard",
+    "code_snippet": "--- a/runner.py\n+++ b/runner.py\n@@ -1,4 +1,9 @@\n+import subprocess\n+\n+DEPLOY_KEY = 'sk-deploy-abc999'\n+\n+def run_job(job_name):\n+    result = subprocess.call(f'bash jobs/{job_name}.sh', shell=True)\n+    return result\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [],
+      "vuln_types": ["hardcoded_secret", "command_injection"]
+    }
+  },
+  {
+    "task_id": "task3_ep_006",
+    "difficulty": "hard",
+    "code_snippet": "--- a/search.py\n+++ b/search.py\n@@ -2,4 +2,9 @@\n+from flask import request, render_template_string\n+\n+def search():\n+    term = request.args.get('q', '')\n+    rows = db.execute(f\"SELECT * FROM products WHERE name='{term}'\")\n+    return render_template_string(f'<ul>{term}</ul>')\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [],
+      "vuln_types": ["sql_injection", "xss"]
+    }
+  },
+  {
+    "task_id": "task3_ep_007",
+    "difficulty": "hard",
+    "code_snippet": "--- a/payments.py\n+++ b/payments.py\n@@ -1,5 +1,10 @@\n+STRIPE_SECRET = 'sk_live_hardcoded_key_123'\n+\n+def process_payment(amount):\n+    if amount > 0:\n+        charge(amount)\n+        return True\n+    return False\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [4],
+      "vuln_types": ["hardcoded_secret"]
+    }
+  },
+  {
+    "task_id": "task3_ep_008",
+    "difficulty": "hard",
+    "code_snippet": "--- a/admin.py\n+++ b/admin.py\n@@ -3,5 +3,10 @@\n+from flask import request, jsonify\n+\n+def delete_user():\n+    user_id = request.args.get('id')\n+    db.execute(f\"DELETE FROM users WHERE id='{user_id}'\")\n+    return jsonify({'status': 'deleted'})\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [],
+      "vuln_types": ["sql_injection", "broken_access_control"]
+    }
+  },
+  {
+    "task_id": "task3_ep_009",
+    "difficulty": "hard",
+    "code_snippet": "--- a/export.py\n+++ b/export.py\n@@ -2,5 +2,10 @@\n+import os\n+from flask import request, send_file\n+\n+def export_report():\n+    report = request.args.get('report')\n+    items = get_items()\n+    data = [items[i] for i in range(1, len(items))]\n+    path = os.path.join('/reports', report)\n+    return send_file(path)\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [7],
+      "vuln_types": ["path_traversal"]
+    }
+  },
+  {
+    "task_id": "task3_ep_010",
+    "difficulty": "hard",
+    "code_snippet": "--- a/notify.py\n+++ b/notify.py\n@@ -1,4 +1,9 @@\n+import subprocess\n+\n+def send_alert(recipient, message):\n+    total = 0\n+    for i in range(len(message)):\n+        total = total - ord(message[i])\n+    subprocess.call(f'mail -s alert {recipient}', shell=True)\n",
+    "instructions": "Review this PR diff. Identify all bugs (return flagged line numbers), security vulnerabilities (return findings with type and description), and write a structured code review in review_text.",
+    "ground_truth": {
+      "bug_lines": [6],
+      "vuln_types": ["command_injection"]
+    }
   }
 ]

@@ -25,5 +25,68 @@
     "ground_truth": {
       "bug_lines": [2]
     }
+  },
+  {
+    "task_id": "task1_ep_004",
+    "difficulty": "easy",
+    "code_snippet": "def is_adult(age):\n    if age > 18:\n        return True\n    return False\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [2]
+    }
+  },
+  {
+    "task_id": "task1_ep_005",
+    "difficulty": "easy",
+    "code_snippet": "def get_first(items):\n    if items:\n        return items[1]\n    return None\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [3]
+    }
+  },
+  {
+    "task_id": "task1_ep_006",
+    "difficulty": "easy",
+    "code_snippet": "def count_positive(numbers):\n    count = 0\n    for n in numbers:\n        if n > 0:\n            count + 1\n    return count\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [5]
+    }
+  },
+  {
+    "task_id": "task1_ep_007",
+    "difficulty": "easy",
+    "code_snippet": "def factorial(n):\n    if n == 0:\n        return 1\n    return n * factorial(n)\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [4]
+    }
+  },
+  {
+    "task_id": "task1_ep_008",
+    "difficulty": "easy",
+    "code_snippet": "def safe_get(data, key):\n    value = data.get(key)\n    return value.strip()\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [3]
+    }
+  },
+  {
+    "task_id": "task1_ep_009",
+    "difficulty": "easy",
+    "code_snippet": "def contains_duplicate(nums):\n    seen = []\n    for n in nums:\n        if n in seen:\n            return True\n        seen.add(n)\n    return False\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [6]
+    }
+  },
+  {
+    "task_id": "task1_ep_010",
+    "difficulty": "easy",
+    "code_snippet": "def sum_list(numbers):\n    total = 0\n    for i in range(1, len(numbers)):\n        total += numbers[i]\n    return total\n",
+    "instructions": "Identify all bugs in the following function. Return the line numbers (1-indexed) where bugs exist.",
+    "ground_truth": {
+      "bug_lines": [3]
+    }
   }
 ]
