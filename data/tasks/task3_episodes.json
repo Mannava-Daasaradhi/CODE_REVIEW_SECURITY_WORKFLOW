@@ -28,7 +28,7 @@
     "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
       "bug_lines": [5, 6, 9],
-      "vuln_types": ["weak_cryptography", "insecure_random"],
+      "vuln_types": ["md5", "insecure_random"],
       "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
@@ -94,7 +94,7 @@
     "instructions": "Review this PR diff. Identify bugs (flag the diff line numbers where they appear), security vulnerabilities, and provide a structured code review.",
     "ground_truth": {
       "bug_lines": [5, 8],
-      "vuln_types": ["hardcoded_secret", "weak_cryptography"],
+      "vuln_types": ["hardcoded_secret", "jwt"],
       "review_quality_keywords": ["critical", "line", "must", "security"]
     }
   },
