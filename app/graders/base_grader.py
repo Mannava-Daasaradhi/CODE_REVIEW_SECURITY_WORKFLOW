@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from app.models.action import Action
+
 
 
 class BaseGrader(ABC):
@@ -15,7 +15,7 @@ class BaseGrader(ABC):
     """
 
     @abstractmethod
-    def grade(self, action: Action, ground_truth: dict) -> float:
+    def grade(self, action, ground_truth: dict) -> float:
         """
         Score the agent's action against the episode ground truth.
 

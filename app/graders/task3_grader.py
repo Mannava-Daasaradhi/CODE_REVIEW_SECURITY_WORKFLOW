@@ -3,7 +3,7 @@ import re
 from app.graders.base_grader import BaseGrader
 from app.graders.task1_grader import Task1Grader
 from app.graders.task2_grader import Task2Grader
-from app.models.action import Action
+
 
 _SEVERITY_PATTERN = re.compile(r"\b(critical|high|medium|low)\b", re.IGNORECASE)
 _LINE_REF_PATTERN = re.compile(r"(line\s+\d+|L\d+)", re.IGNORECASE)
@@ -37,7 +37,7 @@ class Task3Grader(BaseGrader):
         self._task1 = Task1Grader()
         self._task2 = Task2Grader()
 
-    def grade(self, action: Action, ground_truth: dict) -> float:
+    def grade(self, action, ground_truth: dict) -> float:
         bug_score = self._task1.grade(action, ground_truth)
         security_score = self._task2.grade(action, ground_truth)
         review_quality_score = self._score_review_quality(action.review_text)
@@ -65,7 +65,7 @@ class Task3Grader(BaseGrader):
 
         return criteria_met * 0.25
 
-    def get_sub_scores(self, action: Action, ground_truth: dict) -> dict:
+    def get_sub_scores(self, action, ground_truth: dict) -> dict:
         """
         Returns individual sub-scores for inclusion in StepResult.info.
         Used for debugging and transparency — never exposes ground truth.

@@ -1,5 +1,5 @@
 from app.graders.base_grader import BaseGrader
-from app.models.action import Action
+
 
 
 class Task1Grader(BaseGrader):
@@ -15,7 +15,7 @@ class Task1Grader(BaseGrader):
         final = max(0.0, score + penalty)
     """
 
-    def grade(self, action: Action, ground_truth: dict) -> float:
+    def grade(self, action, ground_truth: dict) -> float:
         bug_lines: list[int] = ground_truth.get("bug_lines", [])
 
         if not bug_lines:
