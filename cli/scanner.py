@@ -1,6 +1,5 @@
 # === cli/scanner.py ===
 import os
-from unittest import result
 from cli.reader import read_file
 from cli.prompter import build_prompt
 from cli.ollama_client import query_ollama
@@ -39,7 +38,7 @@ def scan_directory(dirpath: str, model: str, mode: str, stream: bool = False) ->
             result = read_file(filepath)
             code = result["code"]
             language = result["language"]
-        except IOError:
+        except (IOError, ValueError):
             continue
 
         ext = os.path.splitext(filename)[1].lower()

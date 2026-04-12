@@ -27,7 +27,7 @@ def _build_report(f: dict, fn: str, min_s: str, show_t: bool, c: bool) -> str:
 
     m_idx = SEV_ORDER.get(min_s.lower(), 0)
     def filt(items):
-        return [i for i in items if SEV_ORDER.get(i.get("severity", "unknown").lower(), 99) >= m_idx]
+        return [i for i in items if SEV_ORDER.get(i.get("severity", "unknown").lower(), -1) >= m_idx]
 
     def get_col(sev):
         s = sev.lower()

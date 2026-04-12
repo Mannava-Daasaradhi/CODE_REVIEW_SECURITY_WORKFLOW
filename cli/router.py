@@ -1,7 +1,7 @@
 PREFERRED = {
-    "bugs":     ["qwen3-coder", "qwen3", "deepseek-r1", "llama"],
-    "security": ["qwen3-coder", "deepseek-r1", "qwen3", "llama"],
-    "full":     ["qwen3-coder", "deepseek-r1", "qwen3", "llama"],
+    "bugs":     ["qwen3-coder", "qwen3", "deepseek-r1","codellama", "llama"],
+    "security": ["qwen3-coder", "deepseek-r1", "qwen3", "codellama", "llama"],
+    "full":     ["qwen3-coder", "deepseek-r1", "qwen3", "codellama","llama"],
 }
 def select_model(mode: str, available: list[str]) -> str:
     if not available:

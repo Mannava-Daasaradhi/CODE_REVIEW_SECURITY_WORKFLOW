@@ -13,7 +13,7 @@ def get_diff_files() -> list[dict]:
         capture_output=True, text=True
     )
     if result.returncode != 0:
-        raise RuntimeError("Not a git repository")
+        raise RuntimeError(result.stderr.strip() or "Failed to read git diff")
     
     output = result.stdout.strip()
     if not output:
@@ -43,4 +43,6 @@ def get_diff_files() -> list[dict]:
         ext = os.path.splitext(curr_file)[1].lower()
         files.append({"filename": curr_file, "language": LANG_MAP.get(ext, "unknown"), "diff_content": "\n".join(curr_diff)})
 
+    if not files:
+        raise RuntimeError("No reviewable diff hunks found (binary-only changes?)")
     return files

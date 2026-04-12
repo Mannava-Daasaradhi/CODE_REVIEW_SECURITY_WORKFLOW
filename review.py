@@ -46,7 +46,7 @@ def main():
             if args.verify:
                 vp = build_verification_prompt(code, findings, language)
                 vraw = query_ollama(vp, model, stream=False)
-                findings = parse_verification(vraw, findings)
+                findings = parse_verification(findings, vraw)
 
             if args.json:
                 print_json(findings, filename)

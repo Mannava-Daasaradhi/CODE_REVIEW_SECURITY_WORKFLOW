@@ -130,8 +130,9 @@ def build_prompt(
     language: str,
     mode: str,
     filename: str = "",
-    context_patterns: list[str] = [],
+    context_patterns: list[str] = None,
 ) -> str:
+    context_patterns = context_patterns or []
     """
     Build a structured review prompt using all 5 session2 techniques.
 

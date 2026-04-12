@@ -4,7 +4,7 @@ import requests
 def query_ollama(prompt: str, model: str, stream: bool = False) -> str:
     url = "http://localhost:11434/api/generate"
     try:
-        kwargs = {"stream": True} if stream else {"timeout": 120}
+        kwargs = {"stream": True, "timeout": (10, None)} if stream else {"timeout": 120}
         resp = requests.post(
             url, 
             json={"model": model, "prompt": prompt, "stream": stream}, 
@@ -12,6 +12,8 @@ def query_ollama(prompt: str, model: str, stream: bool = False) -> str:
         )
     except requests.exceptions.ConnectionError:
         raise ConnectionError("Ollama is not running on localhost:11434")
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Ollama request failed: {e}") from e
     if resp.status_code != 200:
         raise RuntimeError(f"Ollama error: {resp.status_code}")
     if not stream:

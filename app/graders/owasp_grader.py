@@ -56,14 +56,14 @@ _RULES: list[tuple] = [
         "Use subprocess.run() with a list of args and shell=False",
     ),
     (
-        re.compile(r'f["\'].*SELECT|INSERT|UPDATE|DELETE.*\{'),
+        re.compile(r'f["\'].*(?:SELECT|INSERT|UPDATE|DELETE).*\{'),
         "HIGH",
         "SQL_INJECTION",
         "f-string used to build SQL query — direct SQL injection risk",
         "Use parameterised queries with placeholders (?, %s) instead of f-strings",
     ),
     (
-        re.compile(r'%\s*["\'].*SELECT|INSERT|UPDATE|DELETE'),
+        re.compile(r'%\s*["\'].*(?:SELECT|INSERT|UPDATE|DELETE)'),
         "HIGH",
         "SQL_INJECTION",
         "%-formatting used to build SQL query — SQL injection risk",
