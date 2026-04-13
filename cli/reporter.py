@@ -1,59 +1,77 @@
-import sys
-import colorama
-from colorama import Fore, Style
+import json
+from colorama import init, Fore, Style
 
-colorama.init(autoreset=True)
+init(autoreset=True)
 
-def _build_report(findings: dict, filename: str, color: bool = False) -> str:
-    def c(text: str, color_code: str) -> str:
-        return f"{color_code}{text}{Style.RESET_ALL}" if color else text
+SEV_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
-    thick = " ══════════════════════════════════════"
-    thin  = " ──────────────────────────────────────"
-
+def _build_report(f: dict, fn: str, min_s: str, show_t: bool, c: bool) -> str:
+    res = Style.RESET_ALL if c else ""
+    def cstr(txt, col): return f"{col}{txt}{res}" if c else str(txt)
+    
+    sc = f.get("score", 0)
+    s_col = Fore.GREEN if sc >= 70 else Fore.YELLOW if sc >= 40 else Fore.RED
+    
     lines = [
-        c(thick, Fore.CYAN),
-        c(f"  CODE REVIEW REPORT: {filename}", Style.BRIGHT),
-        c(thick, Fore.CYAN)
+        "══════════════════════════════════════════════",
+        f" CODE REVIEW REPORT: {fn}   SCORE: {cstr(f'{sc}/100', s_col)}",
+        "══════════════════════════════════════════════"
     ]
+    
+    if show_t and f.get("thinking"):
+        lines.extend([
+            "──────────────────────────────────────────────",
+            " 🧠 THINKING",
+            f"  {f['thinking']}"
+        ])
 
-    bugs = findings.get("bugs", [])
-    lines.append(c(f"  🐛 BUGS  ({len(bugs)} found)", Fore.RED + Style.BRIGHT))
-    if not bugs:
-        lines.append("    None found")
-    for b in bugs:
-        lines.append(f"    Line {b.get('line', '?')} : {b.get('description', '')}")
+    m_idx = SEV_ORDER.get(min_s.lower(), 0)
+    def filt(items):
+        return [i for i in items if SEV_ORDER.get(i.get("severity", "unknown").lower(), -1) >= m_idx]
 
-    lines.append(c(thin, Fore.CYAN))
+    def get_col(sev):
+        s = sev.lower()
+        if s == "critical": return Fore.RED + Style.BRIGHT
+        if s == "high": return Fore.RED
+        if s == "medium": return Fore.YELLOW
+        return Fore.WHITE
 
-    sec = findings.get("security", [])
-    lines.append(c(f"  🔒 SECURITY  ({len(sec)} found)", Fore.YELLOW + Style.BRIGHT))
-    if not sec:
-        lines.append("    None found")
-    for s in sec:
-        lines.append(f"    {s.get('type', 'UNKNOWN')} : {s.get('description', '')}")
+    def add_items(items, title, is_bug=True):
+        lines.append(f" {title}  ({len(items)} found)")
+        for i in items:
+            sev = i.get("severity", "default").upper()
+            col = get_col(sev)
+            conf = i.get("confidence", 0)
+            filled = round(conf / 10)
+            bar = "█" * filled + "░" * (10 - filled)
+            hdr = f"Line {i.get('line')}" if is_bug else i.get("type")
+            
+            lines.extend([
+                f"  [{cstr(sev, col)}] {hdr}: {i.get('description')}",
+                f"               Confidence: {bar} {conf}%",
+                f"               Fix: {i.get('fix', '')}"
+            ])
 
-    lines.append(c(thin, Fore.CYAN))
-
-    summary = findings.get("summary", "")
-    lines.append(c("  📋 SUMMARY", Fore.GREEN + Style.BRIGHT))
-    if not summary:
-        lines.append("    None found")
-    else:
-        lines.append(f"    {summary}")
-
-    lines.append(c(thick, Fore.CYAN))
+    add_items(filt(f.get("bugs", [])), "🐛 BUGS", is_bug=True)
+    lines.append("──────────────────────────────────────────────")
+    
+    add_items(filt(f.get("security", [])), "🔒 SECURITY", is_bug=False)
+    lines.extend([
+        "──────────────────────────────────────────────",
+        " 📋 SUMMARY",
+        f"  {f.get('summary', '')}",
+        f" 📊 SCORE: {cstr(f'{sc}/100', s_col)}",
+        "══════════════════════════════════════════════"
+    ])
+    
     return "\n".join(lines)
 
+def print_report(findings: dict, filename: str, min_severity: str = "low", show_thinking: bool = False) -> None:
+    print(_build_report(findings, filename, min_severity, show_thinking, c=True))
 
-def print_report(findings: dict, filename: str) -> None:
-    print(_build_report(findings, filename, color=True))
-
+def print_json(findings: dict, filename: str) -> None:
+    print(json.dumps({"filename": filename, "findings": findings}, indent=2))
 
 def save_report(findings: dict, filename: str, output_path: str) -> None:
-    try:
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(_build_report(findings, filename, color=False) + "\n")
-    except OSError as e:
-        print(f"Error saving report to {output_path}: {e}", file=sys.stderr)
-        raise
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(_build_report(findings, filename, "low", False, c=False) + "\n")

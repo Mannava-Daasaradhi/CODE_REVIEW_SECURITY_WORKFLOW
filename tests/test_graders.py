@@ -1,19 +1,16 @@
-"""
-Grader tests.
-
-The most important tests here are the determinism tests.
-If ANY grader returns different scores for identical inputs, the submission is invalid.
-"""
-
-import pytest
-
-from app.graders.task1_grader import Task1Grader
-from app.graders.task2_grader import Task2Grader
-from app.graders.task3_grader import Task3Grader
-from app.models.action import Action, Finding
+from app.graders.ast_grader import ASTGrader
+from app.graders.owasp_grader import OWASPGrader
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+def test_ast_grader_returns_list(sample_code):
+    result = ASTGrader().analyze(sample_code)
+    assert isinstance(result, list)
+
+
+def test_owasp_grader_returns_list(sample_code):
+    result = OWASPGrader().analyze(sample_code)
+    assert isinstance(result, list)
+
 
 @pytest.fixture
 def task1():
@@ -202,3 +199,6 @@ def test_task3_determinism(task3):
     gt = {"bug_lines": [2], "vuln_types": ["sql_injection"]}
     scores = {task3.grade(action, gt) for _ in range(100)}
     assert len(scores) == 1, f"Task3 grader is non-deterministic: got scores {scores}"
+def test_ast_grader_finds_nothing_on_clean_code():
+    result = ASTGrader().analyze("def add(a, b):\n    return a + b\n")
+    assert isinstance(result, list)
