@@ -14,10 +14,14 @@ try:
         with TestClient(_app) as c:
             yield c
 
-except ImportError:
-    # app.main is not present in CLI-only deployments; route tests will be skipped.
-    pass
+except ModuleNotFoundError as exc:
+    if exc.name not in {"app.main", "fastapi", "fastapi.testclient"}:
+        raise
 
+    @pytest.fixture(scope="module")
+    def client():
+        # app.main is not present in CLI-only deployments; route tests will be skipped.
+        pytest.skip("FastAPI test client is unavailable in this deployment")
 @pytest.fixture
 def sample_findings():
     return {
