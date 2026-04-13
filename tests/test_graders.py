@@ -4,6 +4,7 @@ from app.graders.owasp_grader import OWASPGrader
 from app.graders.task1_grader import Task1Grader
 from app.graders.task2_grader import Task2Grader
 from app.graders.task3_grader import Task3Grader
+from app.models.action import Action, Finding
 
 def test_ast_grader_returns_list(sample_code):
     result = ASTGrader().analyze(sample_code)
