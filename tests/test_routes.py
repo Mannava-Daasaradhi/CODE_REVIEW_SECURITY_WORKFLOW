@@ -4,9 +4,13 @@ Uses the `client` fixture from conftest.py so the FastAPI lifespan runs
 and app.state.env is initialised before any request is made.
 """
 
-from fastapi.testclient import TestClient
+import pytest
 
-from app.main import app
+try:
+    from fastapi.testclient import TestClient
+    from app.main import app
+except ImportError:
+    pytest.skip("app.main not present in CLI-only deployment", allow_module_level=True)
 
 
 def test_root(client):

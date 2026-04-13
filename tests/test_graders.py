@@ -58,9 +58,9 @@ def test_task1_spam_penalty(task1):
 
 def test_task1_floor_at_zero(task1):
     action = Action(flagged_lines=[1, 2, 3, 4, 5, 6, 7])
-    gt = {"bug_lines": [99]}  # None correct
+    gt = {"bug_lines": [99]}  # None correct → recall=0.0, penalty=-0.1, floored to 0.0
     score = task1.grade(action, gt)
-    assert score >= 0.0
+    assert score == pytest.approx(0.0)
 
 
 def test_task1_empty_ground_truth_correct(task1):
@@ -117,13 +117,14 @@ def test_task2_case_insensitive(task2):
 
 def test_task2_false_positive_penalty(task2):
     # 1 correct, 10 false positives against 1 ground truth vuln
+    # matched=1, score=1.0, false_positives=10, fp_threshold=2, excess_fps=10-2=8, penalty=-0.4 → 0.6
     action = Action(findings=[
         Finding(type="sql_injection", description="correct"),
         *[Finding(type=f"fake_vuln_{i}", description="wrong") for i in range(10)],
     ])
     gt = {"vuln_types": ["sql_injection"]}
     score = task2.grade(action, gt)
-    assert score < 1.0  # Penalty applied
+    assert score == pytest.approx(0.6)
 
 
 def test_task2_determinism(task2):
