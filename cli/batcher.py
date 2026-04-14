@@ -1,10 +1,17 @@
 def chunk_code(code: str, chunk_size: int = 150, overlap: int = 20) -> list[dict]:
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be > 0")
+    if overlap < 0:
+        raise ValueError("overlap must be >= 0")
+    if overlap >= chunk_size:
+        raise ValueError("overlap must be smaller than chunk_size")
+
     lines = code.splitlines()
     if not lines:
         return [{"chunk": "", "start_line": 1, "end_line": 1}]
 
     chunks = []
-    step = max(1, chunk_size - overlap)
+    step = chunk_size - overlap
     i = 0
     while i < len(lines):
         start = i
@@ -21,24 +28,38 @@ def chunk_code(code: str, chunk_size: int = 150, overlap: int = 20) -> list[dict
 
 
 def merge_findings(chunk_results: list[dict], chunk_map: list[dict]) -> dict:
-    merged_bugs: dict[int, dict] = {}
-    merged_security: dict[str, dict] = {}
+    if len(chunk_results) != len(chunk_map):
+        raise ValueError(
+            f"chunk_results and chunk_map lengths differ: "
+            f"{len(chunk_results)} vs {len(chunk_map)}"
+        )
+
+    merged_bugs: dict[tuple, dict] = {}
+    merged_security: dict[tuple, dict] = {}
     summaries = []
     scores = []
     thinking_parts = []
 
-    for result, chunk_info in zip(chunk_results, chunk_map):
+    for result, chunk_info in zip(chunk_results, chunk_map, strict=True):
         offset = chunk_info["start_line"] - 1
 
         for bug in result.get("bugs", []):
             line = bug.get("line")
             abs_line = (line + offset) if isinstance(line, int) else line
             bug_copy = {**bug, "line": abs_line}
-            if abs_line not in merged_bugs or bug_copy.get("confidence", 0) > merged_bugs[abs_line].get("confidence", 0):
-                merged_bugs[abs_line] = bug_copy
+            if isinstance(abs_line, int):
+                key = ("line", abs_line)
+            else:
+                key = ("no_line", (bug_copy.get("description") or "").strip().lower(),
+                       (bug_copy.get("fix") or "").strip().lower())
+            if key not in merged_bugs or bug_copy.get("confidence", 0) > merged_bugs[key].get("confidence", 0):
+                merged_bugs[key] = bug_copy
 
         for sec in result.get("security", []):
-            key = (sec.get("type") or "").lower()
+            key = (
+                (sec.get("type") or "").lower(),
+                (sec.get("description") or "").strip().lower(),
+            )
             if key not in merged_security or sec.get("confidence", 0) > merged_security[key].get("confidence", 0):
                 merged_security[key] = sec
 
