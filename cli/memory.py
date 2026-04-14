@@ -1,5 +1,7 @@
 import time
+import uuid
 from pathlib import Path
+from loguru import logger
 
 try:
     import chromadb
@@ -24,22 +26,23 @@ class ReviewMemory:
         try:
             text = embed_finding(finding)
             embedding = get_embedding(text)
-            doc_id = f"{filepath}::{finding.get('type') or finding.get('line')}::{int(time.time() * 1000)}"
+            doc_id = str(uuid.uuid4())
+            line = finding.get("line")
             self._findings.add(
                 ids=[doc_id],
                 embeddings=[embedding],
                 documents=[text],
                 metadatas=[{
                     "filepath": filepath,
-                    "line": str(finding.get("line") or ""),
+                    "line": int(line) if isinstance(line, int) else -1,
                     "severity": finding.get("severity") or "",
                     "type": finding.get("type") or "",
                     "verdict": verdict,
-                    "timestamp": str(time.time()),
+                    "timestamp": time.time(),
                 }],
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"store_finding failed for {filepath}: {e}")
 
     def query_similar(self, finding: dict, n_results: int = 5) -> list[dict]:
         try:
@@ -56,7 +59,8 @@ class ReviewMemory:
             ):
                 output.append({**meta, "distance": dist})
             return output
-        except Exception:
+        except Exception as e:
+            logger.warning(f"query_similar failed: {e}")
             return []
 
     def is_false_positive(self, finding: dict, filepath: str,
@@ -71,24 +75,26 @@ class ReviewMemory:
                 ):
                     return True
             return False
-        except Exception:
+        except Exception as e:
+            logger.warning(f"is_false_positive failed: {e}")
             return False
 
     def get_codebase_patterns(self) -> list[str]:
         try:
-            all_items = self._findings.get(include=["documents", "metadatas"])
+            all_items = self._findings.get(include=["documents"])
             freq: dict[str, int] = {}
             for doc in all_items.get("documents") or []:
                 freq[doc] = freq.get(doc, 0) + 1
             return [doc for doc, count in freq.items() if count >= 3]
-        except Exception:
+        except Exception as e:
+            logger.warning(f"get_codebase_patterns failed: {e}")
             return []
 
     def get_related_files(self, filepath: str) -> list[str]:
         try:
             items = self._findings.get(
                 where={"filepath": filepath},
-                include=["embeddings", "metadatas"],
+                include=["embeddings"],
             )
             embeddings = items.get("embeddings") or []
             if not embeddings:
@@ -105,27 +111,30 @@ class ReviewMemory:
                     if fp and fp != filepath:
                         related.add(fp)
             return list(related)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"get_related_files failed: {e}")
             return []
 
     def mark_false_positive(self, filepath: str, line: int) -> None:
         try:
             results = self._findings.get(
-                where={"filepath": filepath, "line": str(line)},
+                where={"filepath": filepath, "line": line},
                 include=["metadatas"],
             )
             ids = results.get("ids") or []
-            for doc_id in ids:
+            metadatas = results.get("metadatas") or []
+            for doc_id, existing_meta in zip(ids, metadatas):
+                updated_meta = {**existing_meta, "verdict": "false_positive"}
                 self._findings.update(
                     ids=[doc_id],
-                    metadatas=[{"verdict": "false_positive"}],
+                    metadatas=[updated_meta],
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"mark_false_positive failed: {e}")
 
     def clear(self) -> None:
         try:
             self._client.delete_collection("findings")
             self._findings = self._client.get_or_create_collection("findings")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"clear failed: {e}")
